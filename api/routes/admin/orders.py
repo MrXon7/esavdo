@@ -11,6 +11,7 @@ from core.database import get_db
 from api.deps import get_current_admin
 from models.admin import Admin
 from models.order import Order, OrderItem, OrderStatus
+from models.product import Product
 from models.user import User
 from bot.services.notifier import notify_customer_order_status
 
@@ -58,6 +59,34 @@ class UpdateOrderStatusRequest(BaseModel):
     status: str
 
 
+def _safe_image_id(order_item) -> Optional[str]:
+    """Safely extract the first image file_id from an OrderItem.product.
+    Returns None on any error (deleted product, missing images, etc.)
+    """
+    try:
+        product = order_item.product
+        if not product:
+            return None
+        images = getattr(product, "images", None)
+        if not images:
+            return None
+        first = images[0] if images else None
+        return getattr(first, "file_id", None) if first else None
+    except Exception:
+        return None
+
+
+def _build_order_item_dict(i) -> dict:
+    return {
+        "id": i.id,
+        "product_id": i.product_id,
+        "product_name": (i.product.name if i.product else "O'chirilgan mahsulot"),
+        "quantity": i.quantity,
+        "price_at_order_time": float(i.price_at_order_time),
+        "image_file_id": _safe_image_id(i),
+    }
+
+
 @router.get("", response_model=List[AdminOrderResponse])
 async def list_orders_admin(
     status: Optional[str] = Query(None),
@@ -65,54 +94,50 @@ async def list_orders_admin(
     db: AsyncSession = Depends(get_db),
 ):
     """Admin: Fetch all orders with product images, optionally filtered by status."""
-    query = (
-        select(Order)
-        .options(
-            selectinload(Order.user),
-            selectinload(Order.items)
-            .selectinload(OrderItem.product)
-            .selectinload(Product.images),
-        )
-        .order_by(Order.id.desc())
-    )
-
-    if status:
-        query = query.where(Order.status == status.strip())
-
-    result = await db.execute(query)
-    orders = result.scalars().all()
-
-    resp = []
-    for o in orders:
-        items = []
-        for i in o.items:
-            img_id = (
-                i.product.images[0].file_id
-                if (i.product and i.product.images)
-                else None
+    try:
+        query = (
+            select(Order)
+            .options(
+                selectinload(Order.user),
+                selectinload(Order.items)
+                .selectinload(OrderItem.product)
+                .selectinload(Product.images),
             )
-            items.append({
-                "id": i.id,
-                "product_id": i.product_id,
-                "product_name": i.product.name if i.product else "O'chirilgan mahsulot",
-                "quantity": i.quantity,
-                "price_at_order_time": float(i.price_at_order_time),
-                "image_file_id": img_id,
-            })
-        resp.append({
-            "id": o.id,
-            "status": o.status,
-            "address": o.address,
-            "phone": o.phone,
-            "payment_type": o.payment_type,
-            "total_price": float(o.total_price),
-            "notes": o.notes,
-            "created_at": o.created_at,
-            "updated_at": o.updated_at,
-            "user": o.user,
-            "items": items,
-        })
-    return resp
+            .order_by(Order.id.desc())
+        )
+
+        if status:
+            query = query.where(Order.status == status.strip())
+
+        result = await db.execute(query)
+        orders = result.scalars().all()
+
+        resp = []
+        for o in orders:
+            try:
+                items = [_build_order_item_dict(i) for i in o.items]
+                resp.append({
+                    "id": o.id,
+                    "status": o.status,
+                    "address": o.address,
+                    "phone": o.phone,
+                    "payment_type": o.payment_type,
+                    "total_price": float(o.total_price),
+                    "notes": o.notes,
+                    "created_at": o.created_at,
+                    "updated_at": o.updated_at,
+                    "user": o.user,
+                    "items": items,
+                })
+            except Exception as ex:
+                # Log and skip malformed order — don't crash the whole list
+                import logging
+                logging.getLogger(__name__).warning(f"Buyurtma #{o.id} ni yuklashda xatolik: {ex}")
+        return resp
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"list_orders_admin xatolik: {e}")
+        raise HTTPException(status_code=500, detail=f"Buyurtmalarni yuklashda xatolik: {str(e)}")
 
 
 @router.patch("/{order_id}/status", response_model=AdminOrderResponse)
@@ -164,21 +189,7 @@ async def update_order_status_admin(
         except Exception:
             pass
 
-    items = []
-    for i in order.items:
-        img_id = (
-            i.product.images[0].file_id
-            if (i.product and i.product.images)
-            else None
-        )
-        items.append({
-            "id": i.id,
-            "product_id": i.product_id,
-            "product_name": i.product.name if i.product else "O'chirilgan mahsulot",
-            "quantity": i.quantity,
-            "price_at_order_time": float(i.price_at_order_time),
-            "image_file_id": img_id,
-        })
+    items = [_build_order_item_dict(i) for i in order.items]
 
     return {
         "id": order.id,

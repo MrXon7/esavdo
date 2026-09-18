@@ -149,54 +149,73 @@ async def create_order(
     }
 
 
+def _safe_image_id(order_item) -> Optional[str]:
+    """Safely extract the first product image file_id. Returns None on any error."""
+    try:
+        product = order_item.product
+        if not product:
+            return None
+        images = getattr(product, "images", None)
+        if not images:
+            return None
+        first = images[0] if images else None
+        return getattr(first, "file_id", None) if first else None
+    except Exception:
+        return None
+
+
 @router.get("", response_model=List[OrderDetailResponse])
 async def get_my_orders(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Retrieve order history for the authenticated user with product images."""
-    result = await db.execute(
-        select(Order)
-        .where(Order.user_id == current_user.id)
-        .options(
-            selectinload(Order.items)
-            .selectinload(OrderItem.product)
-            .selectinload(Product.images)
-        )
-        .order_by(Order.id.desc())
-    )
-    orders = result.scalars().all()
-
-    resp = []
-    for o in orders:
-        items = []
-        for i in o.items:
-            img_id = (
-                i.product.images[0].file_id
-                if (i.product and i.product.images)
-                else None
+    try:
+        result = await db.execute(
+            select(Order)
+            .where(Order.user_id == current_user.id)
+            .options(
+                selectinload(Order.items)
+                .selectinload(OrderItem.product)
+                .selectinload(Product.images)
             )
-            items.append({
-                "id": i.id,
-                "product_id": i.product_id,
-                "product_name": i.product.name if i.product else "O'chirilgan mahsulot",
-                "quantity": i.quantity,
-                "price_at_order_time": float(i.price_at_order_time),
-                "image_file_id": img_id,
-            })
-        resp.append({
-            "id": o.id,
-            "status": o.status,
-            "address": o.address,
-            "phone": o.phone,
-            "payment_type": o.payment_type,
-            "total_price": float(o.total_price),
-            "notes": o.notes,
-            "created_at": o.created_at,
-            "updated_at": o.updated_at,
-            "items": items,
-        })
-    return resp
+            .order_by(Order.id.desc())
+        )
+        orders = result.scalars().all()
+
+        resp = []
+        for o in orders:
+            try:
+                items = []
+                for i in o.items:
+                    items.append({
+                        "id": i.id,
+                        "product_id": i.product_id,
+                        "product_name": i.product.name if i.product else "O'chirilgan mahsulot",
+                        "quantity": i.quantity,
+                        "price_at_order_time": float(i.price_at_order_time),
+                        "image_file_id": _safe_image_id(i),
+                    })
+                resp.append({
+                    "id": o.id,
+                    "status": o.status,
+                    "address": o.address,
+                    "phone": o.phone,
+                    "payment_type": o.payment_type,
+                    "total_price": float(o.total_price),
+                    "notes": o.notes,
+                    "created_at": o.created_at,
+                    "updated_at": o.updated_at,
+                    "items": items,
+                })
+            except Exception as ex:
+                import logging
+                logging.getLogger(__name__).warning(f"Buyurtma #{o.id} ni yuklashda xatolik: {ex}")
+        return resp
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"get_my_orders xatolik: {e}")
+        raise HTTPException(status_code=500, detail=f"Buyurtmalar tarixini yuklashda xatolik: {str(e)}")
 
 
 @router.delete("/{order_id}")

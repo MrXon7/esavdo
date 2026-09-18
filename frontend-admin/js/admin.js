@@ -30,7 +30,10 @@ const _tabShown = new Set();
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function getImageUrl(fileId) {
-  if (!fileId) return "";
+  if (!fileId || typeof fileId !== "string" || fileId.trim() === "") {
+    // Grey placeholder SVG — rasm yo'q yoki topilmasa
+    return 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23e2e8f0"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="%2394a3b8" font-size="11" font-family="sans-serif">Rasm yo\'q</text></svg>';
+  }
   return `/images/${fileId}`;
 }
 
