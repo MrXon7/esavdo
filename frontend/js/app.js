@@ -39,7 +39,7 @@ const elOrdersList = document.getElementById("orders-list");
 
 // Modal Elements
 const elProductModal = document.getElementById("product-modal");
-const elModalImg = document.getElementById("modal-img");
+const elModalGallery = document.getElementById("modal-gallery");
 const elModalTitle = document.getElementById("modal-title");
 const elModalPrice = document.getElementById("modal-price");
 const elModalDesc = document.getElementById("modal-desc");
@@ -246,10 +246,14 @@ function renderProducts() {
 
     const firstImage = p.images && p.images.length > 0 ? p.images[0].file_id : null;
     const imgUrl = getImageUrl(firstImage);
+    const photoBadge = p.images && p.images.length > 1
+      ? `<span class="thumb-photos-badge">📷 ${p.images.length}</span>`
+      : "";
 
     card.innerHTML = `
       <div class="product-thumb-wrapper">
         <img src="${imgUrl}" class="product-thumb" alt="${p.name}" loading="lazy" />
+        ${photoBadge}
       </div>
       <div class="product-details">
         <div class="product-title">${p.name}</div>
@@ -330,8 +334,95 @@ function updateCardActionUI(productId) {
 // ─── 4. Product Modal ───────────────────────────────────────────────────────
 function openProductModal(prod) {
   activeProductModal = prod;
-  const firstImage = prod.images && prod.images.length > 0 ? prod.images[0].file_id : null;
-  elModalImg.src = getImageUrl(firstImage);
+
+  const images = prod.images || [];
+
+  if (images.length > 1) {
+    // Multi-image Carousel
+    let slidesHtml = "";
+    let dotsHtml = "";
+    images.forEach((img, idx) => {
+      slidesHtml += `
+        <div class="carousel-slide" data-slide-index="${idx}">
+          <img src="${getImageUrl(img.file_id)}" alt="${prod.name} - ${idx + 1}" loading="lazy" />
+        </div>
+      `;
+      dotsHtml += `
+        <div class="carousel-dot ${idx === 0 ? "active" : ""}" data-dot-index="${idx}"></div>
+      `;
+    });
+
+    elModalGallery.innerHTML = `
+      <div class="carousel-track" id="modal-carousel-track">
+        ${slidesHtml}
+      </div>
+      <button class="carousel-btn carousel-prev" id="carousel-btn-prev" aria-label="Oldingi rasm">‹</button>
+      <button class="carousel-btn carousel-next" id="carousel-btn-next" aria-label="Keyingi rasm">›</button>
+      <div class="carousel-counter" id="carousel-counter">1/${images.length}</div>
+      <div class="carousel-dots" id="carousel-dots">
+        ${dotsHtml}
+      </div>
+    `;
+
+    const track = document.getElementById("modal-carousel-track");
+    const prevBtn = document.getElementById("carousel-btn-prev");
+    const nextBtn = document.getElementById("carousel-btn-next");
+    const counter = document.getElementById("carousel-counter");
+    const dots = elModalGallery.querySelectorAll(".carousel-dot");
+
+    let currentIndex = 0;
+
+    const updateCarouselUI = (idx) => {
+      currentIndex = Math.max(0, Math.min(idx, images.length - 1));
+      if (counter) counter.textContent = `${currentIndex + 1}/${images.length}`;
+      dots.forEach((dot, dIdx) => {
+        dot.classList.toggle("active", dIdx === currentIndex);
+      });
+    };
+
+    let scrollTimeout = null;
+    track.onscroll = () => {
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        const slideWidth = track.clientWidth || 1;
+        const index = Math.round(track.scrollLeft / slideWidth);
+        updateCarouselUI(index);
+      }, 40);
+    };
+
+    prevBtn.onclick = (e) => {
+      e.stopPropagation();
+      const newIdx = (currentIndex - 1 + images.length) % images.length;
+      track.scrollTo({ left: newIdx * track.clientWidth, behavior: "smooth" });
+      updateCarouselUI(newIdx);
+      triggerHaptic("light");
+    };
+
+    nextBtn.onclick = (e) => {
+      e.stopPropagation();
+      const newIdx = (currentIndex + 1) % images.length;
+      track.scrollTo({ left: newIdx * track.clientWidth, behavior: "smooth" });
+      updateCarouselUI(newIdx);
+      triggerHaptic("light");
+    };
+
+    dots.forEach((dot) => {
+      dot.onclick = (e) => {
+        e.stopPropagation();
+        const targetIdx = Number(dot.dataset.dotIndex);
+        track.scrollTo({ left: targetIdx * track.clientWidth, behavior: "smooth" });
+        updateCarouselUI(targetIdx);
+        triggerHaptic("light");
+      };
+    });
+  } else {
+    // Single Image or Placeholder
+    const firstImage = images.length > 0 ? images[0].file_id : null;
+    elModalGallery.innerHTML = `
+      <img src="${getImageUrl(firstImage)}" class="modal-img" alt="${prod.name}" />
+    `;
+  }
+
   elModalTitle.textContent = prod.name;
   elModalPrice.textContent = cart.formatPrice(prod.price);
   elModalDesc.textContent = prod.description || "Ushbu mahsulot uchun batafsil tavsif kiritilmagan.";
