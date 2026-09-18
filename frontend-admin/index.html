@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Admin Panel - Boshqaruv</title>
+  <link rel="stylesheet" href="/admin/css/admin.css" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <!-- Header -->
+  <header class="admin-header">
+    <div class="admin-title">Boshqaruv Paneli</div>
+    <span class="badge-admin">ADMIN</span>
+  </header>
+
+  <!-- Tab 1: Orders -->
+  <main id="tab-orders" class="admin-section active">
+    <div class="filters-bar">
+      <button class="filter-btn active" data-status="">Barchasi</button>
+      <button class="filter-btn" data-status="pending">Kutilmoqda</button>
+      <button class="filter-btn" data-status="confirmed">Tasdiqlandi</button>
+      <button class="filter-btn" data-status="preparing">Tayyorlanmoqda</button>
+      <button class="filter-btn" data-status="delivering">Yetkazilmoqda</button>
+      <button class="filter-btn" data-status="completed">Yakunlandi</button>
+      <button class="filter-btn" data-status="cancelled">Bekor qilindi</button>
+    </div>
+
+    <div id="admin-orders-list"></div>
+  </main>
+
+  <!-- Tab 2: Products -->
+  <section id="tab-products" class="admin-section">
+    <button class="btn btn-primary btn-block" id="btn-add-product" style="margin-bottom: 14px;">
+      ➕ Yangi mahsulot qo'shish
+    </button>
+    <div id="admin-products-list"></div>
+  </section>
+
+  <!-- Tab 3: Uploaded Images Gallery -->
+  <section id="tab-images" class="admin-section">
+    <div class="info-banner">
+      💡 <b>Yangi rasm qo'shish:</b> Telegram botingizga istalgan rasm yoki fotosuratlarni yuboring. Ular bu yerda avtomatik paydo bo'ladi va mahsulotlarga biriktirishga tayyor bo'ladi.
+    </div>
+    <div id="admin-images-gallery"></div>
+  </section>
+
+  <!-- Tab 4: Categories -->
+  <section id="tab-categories" class="admin-section">
+    <div class="card">
+      <div class="card-title">➕ Yangi kategoriya qo'shish</div>
+      <form id="category-add-form">
+        <div class="form-group">
+          <label class="form-label">Kategoriya nomi *</label>
+          <input type="text" id="new-cat-name" class="form-input" placeholder="Masalan: Erkaklar kiyimi" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tartib raqami (sort order)</label>
+          <input type="number" id="new-cat-sort" class="form-input" value="0" />
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Qo'shish</button>
+      </form>
+    </div>
+
+    <div id="admin-categories-list"></div>
+  </section>
+
+  <!-- Tab 5: Store Settings (White-Label) -->
+  <section id="tab-settings" class="admin-section">
+    <div class="card">
+      <div class="card-title">⚙️ Do'kon Sozlamalari (White-Label)</div>
+      <div class="info-banner">
+        Bu yerdagi o'zgarishlar Telegram bot va Mini App'da darhol aks etadi. Qayta deploy qilish shart emas!
+      </div>
+      <form id="settings-form">
+        <div class="form-group">
+          <label class="form-label">Do'kon nomi *</label>
+          <input type="text" id="setting-store-name" class="form-input" required />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Do'kon qisqa tavsifi</label>
+          <textarea id="setting-store-desc" class="form-textarea" placeholder="Eng sifatli mahsulotlar kafolati..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Aloqa telefon raqami</label>
+          <input type="tel" id="setting-contact-phone" class="form-input" placeholder="+998 90 000 00 00" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Valyuta belgisi</label>
+          <input type="text" id="setting-currency" class="form-input" value="so'm" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Logo Telegram File ID (ixtiyoriy)</label>
+          <input type="text" id="setting-logo-id" class="form-input" placeholder="Botga yuborilgan rasmning file_id si" />
+        </div>
+
+        <button type="submit" class="btn btn-success btn-block" style="margin-top: 10px;">
+          💾 Sozlamalarni saqlash
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <!-- Bottom Nav Tabs -->
+  <nav class="admin-nav">
+    <button class="nav-tab active" data-tab="orders">
+      <span class="nav-tab-icon">📦</span>
+      <span>Buyurtmalar</span>
+    </button>
+    <button class="nav-tab" data-tab="products">
+      <span class="nav-tab-icon">🏷</span>
+      <span>Mahsulotlar</span>
+    </button>
+    <button class="nav-tab" data-tab="images">
+      <span class="nav-tab-icon">🖼</span>
+      <span>Rasmlar</span>
+    </button>
+    <button class="nav-tab" data-tab="categories">
+      <span class="nav-tab-icon">📂</span>
+      <span>Bo'limlar</span>
+    </button>
+    <button class="nav-tab" data-tab="settings">
+      <span class="nav-tab-icon">⚙️</span>
+      <span>Sozlamalar</span>
+    </button>
+  </nav>
+
+  <!-- Product Modal -->
+  <div class="modal-overlay" id="product-modal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="product-modal-title">Mahsulot</h3>
+        <button class="modal-close" id="btn-close-product-modal">&times;</button>
+      </div>
+
+      <form id="product-form">
+        <div class="form-group">
+          <label class="form-label">Nomi *</label>
+          <input type="text" id="prod-name" class="form-input" required />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Narxi *</label>
+          <input type="number" step="any" id="prod-price" class="form-input" required />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Kategoriya</label>
+          <select id="product-category-select" class="form-select"></select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Tavsif</label>
+          <textarea id="prod-desc" class="form-textarea" placeholder="Mahsulot haqida batafsil ma'lumot..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">📸 Rasmlarni tanlang (Galereyadan):</label>
+          <div class="image-picker-grid" id="product-image-picker"></div>
+        </div>
+
+        <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="prod-active" checked style="width:18px; height:18px;" />
+          <label for="prod-active" style="font-size: 14px; font-weight: 600;">Sotuvda faol ko'rinsin</label>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block">Saqlash</button>
+      </form>
+    </div>
+  </div>
+
+  <script type="module" src="/admin/js/admin.js"></script>
+</body>
+</html>
