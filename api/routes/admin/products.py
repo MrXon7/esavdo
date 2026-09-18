@@ -161,6 +161,8 @@ async def update_product_admin(
         product.is_active = req.is_active
 
     if req.image_file_ids is not None:
+        old_file_ids = [img.file_id for img in product.images]
+
         # Clear existing images
         for existing_img in list(product.images):
             await db.delete(existing_img)
@@ -174,13 +176,31 @@ async def update_product_admin(
             )
             db.add(img)
 
-        # Mark corresponding uploaded_images as used
-        if req.image_file_ids:
-            await db.execute(
-                update(UploadedImage)
-                .where(UploadedImage.file_id.in_(req.image_file_ids))
-                .values(is_used=True)
+        await db.flush()
+
+        # Synchronize is_used status for all affected file_ids
+        affected_file_ids = list(set(old_file_ids + req.image_file_ids))
+        if affected_file_ids:
+            used_res = await db.execute(
+                select(ProductImage.file_id)
+                .where(ProductImage.file_id.in_(affected_file_ids))
+                .distinct()
             )
+            still_used_ids = set(used_res.scalars().all())
+            not_used_ids = set(affected_file_ids) - still_used_ids
+
+            if still_used_ids:
+                await db.execute(
+                    update(UploadedImage)
+                    .where(UploadedImage.file_id.in_(list(still_used_ids)))
+                    .values(is_used=True)
+                )
+            if not_used_ids:
+                await db.execute(
+                    update(UploadedImage)
+                    .where(UploadedImage.file_id.in_(list(not_used_ids)))
+                    .values(is_used=False)
+                )
 
     await db.commit()
     invalidate_catalog_cache()
@@ -199,13 +219,37 @@ async def delete_product_admin(
     current_admin: Admin = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Admin: Delete product."""
-    result = await db.execute(select(Product).where(Product.id == product_id))
+    """Admin: Delete product and release all its images back to unused (bo'sh) state."""
+    result = await db.execute(
+        select(Product)
+        .where(Product.id == product_id)
+        .options(selectinload(Product.images))
+    )
     product = result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=404, detail="Mahsulot topilmadi")
 
+    deleted_file_ids = [img.file_id for img in product.images]
+
     await db.delete(product)
+    await db.flush()
+
+    # Revert image statuses that are no longer used by any product
+    if deleted_file_ids:
+        used_res = await db.execute(
+            select(ProductImage.file_id)
+            .where(ProductImage.file_id.in_(deleted_file_ids))
+            .distinct()
+        )
+        still_used = set(used_res.scalars().all())
+        now_free = set(deleted_file_ids) - still_used
+        if now_free:
+            await db.execute(
+                update(UploadedImage)
+                .where(UploadedImage.file_id.in_(list(now_free)))
+                .values(is_used=False)
+            )
+
     await db.commit()
     invalidate_catalog_cache()
     return {"status": "success", "message": "Mahsulot muvaffaqiyatli o'chirildi"}

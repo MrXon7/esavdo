@@ -366,6 +366,7 @@ window.deleteProduct = async (productId) => {
   try {
     await adminApi.deleteProduct(productId);
     _productsCache = null; // Invalidate cache
+    _imagesCache = null;   // Invalidate images cache so freed images show as Bo'sh!
     loadProducts(true);
   } catch (err) {
     alert("Xatolik: " + err.message);
@@ -541,6 +542,7 @@ elProductForm.onsubmit = async (e) => {
     }
 
     _productsCache = null; // Invalidate on save
+    _imagesCache = null;   // Invalidate images cache so updated image statuses show in gallery!
     closeProductModal();
     loadProducts(true);
   } catch (err) {
@@ -572,15 +574,48 @@ function renderGalleryFromData(images) {
   for (const img of images) {
     const item = document.createElement("div");
     item.className = "gallery-item";
+
+    const badgeClass = img.is_used ? "used" : "free";
+    const badgeText = img.is_used ? "Band" : "Bo'sh";
+
+    let deleteBtnHtml = "";
+    if (!img.is_used) {
+      deleteBtnHtml = `
+        <button class="gallery-del-btn" onclick="event.stopPropagation(); deleteGalleryImage(${img.id})" title="Rasmni o'chirish">
+          🗑
+        </button>
+      `;
+    }
+
     item.innerHTML = `
       <img src="${getImageUrl(img.file_id)}" class="gallery-img" alt="Uploaded Image">
-      <div style="position:absolute; bottom:4px; right:4px; font-size:10px; font-weight:700; background:rgba(0,0,0,0.65); color:#ffffff; padding:2px 6px; border-radius:4px;">
-        ${img.is_used ? "Band" : "Bo'sh"}
-      </div>
+      <span class="gallery-badge ${badgeClass}">${badgeText}</span>
+      ${deleteBtnHtml}
     `;
+
+    if (img.is_used) {
+      item.onclick = () => {
+        alert("ℹ️ Ushbu rasm mahsulotga biriktirilgan (band). Uni o'chirish uchun avval tegishli mahsulotdan rasmni olib tashlang.");
+      };
+    }
+
     elGalleryContainer.appendChild(item);
   }
 }
+
+window.deleteGalleryImage = async (imageId) => {
+  if (!confirm("Haqiqatan ham ushbu bo'sh rasmni butunlay o'chirmoqchimisiz?")) return;
+  try {
+    await adminApi.deleteUploadedImage(imageId);
+    if (_imagesCache) {
+      _imagesCache = _imagesCache.filter((img) => img.id !== imageId);
+      renderGalleryFromData(_imagesCache);
+    }
+  } catch (err) {
+    alert("Xatolik: " + err.message);
+    loadImagesGallery(true);
+  }
+};
 
 async function loadImagesGallery(forceRefresh = false) {
   if (!elGalleryContainer) return;
