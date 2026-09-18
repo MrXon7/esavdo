@@ -1,5 +1,15 @@
 import { adminApi } from "./admin-api.js";
 
+// Telegram Theme Sync
+const tg = window.Telegram?.WebApp;
+if (tg) {
+  tg.ready();
+  tg.expand();
+  if (tg.colorScheme) {
+    document.documentElement.setAttribute("data-theme", tg.colorScheme);
+  }
+}
+
 // State
 let currentTab = "orders";
 let currentOrderStatusFilter = null;
@@ -40,7 +50,7 @@ tabs.forEach((t) => {
   t.onclick = () => switchTab(t.dataset.tab);
 });
 
-// 2. Orders Tab
+// 2. Orders Tab with Skeletons
 const elOrdersContainer = document.getElementById("admin-orders-list");
 const statusFilterBtns = document.querySelectorAll(".filter-btn");
 
@@ -53,71 +63,109 @@ statusFilterBtns.forEach((btn) => {
   };
 });
 
+function renderAdminOrdersSkeleton() {
+  elOrdersContainer.innerHTML = `
+    <div class="admin-card" style="padding: 16px;">
+      <div class="skeleton" style="width: 40%; height: 18px; margin-bottom: 8px;"></div>
+      <div class="skeleton" style="width: 65%; height: 14px; margin-bottom: 12px;"></div>
+      <div class="skeleton" style="width: 100%; height: 50px; border-radius: 8px; margin-bottom: 12px;"></div>
+      <div class="skeleton" style="width: 30%; height: 20px;"></div>
+    </div>
+    <div class="admin-card" style="padding: 16px;">
+      <div class="skeleton" style="width: 40%; height: 18px; margin-bottom: 8px;"></div>
+      <div class="skeleton" style="width: 60%; height: 14px; margin-bottom: 12px;"></div>
+      <div class="skeleton" style="width: 100%; height: 40px; border-radius: 8px;"></div>
+    </div>
+  `;
+}
+
 async function loadOrders() {
   try {
-    elOrdersContainer.innerHTML = `<div style="text-align:center; padding:20px; color:#888;">Yuklanmoqda...</div>`;
+    renderAdminOrdersSkeleton();
     const orders = await adminApi.getOrders(currentOrderStatusFilter);
 
     if (!orders.length) {
-      elOrdersContainer.innerHTML = `<div style="text-align:center; padding:30px; color:#888;">Buyurtmalar yo'q</div>`;
+      elOrdersContainer.innerHTML = `
+        <div style="text-align:center; padding:40px 16px; color:var(--text-secondary);">
+          <div style="font-size:42px; margin-bottom:8px;">📦</div>
+          <div style="font-weight:700; font-size:15px;">Hozircha buyurtmalar yo'q</div>
+        </div>
+      `;
       return;
     }
 
     elOrdersContainer.innerHTML = "";
     for (const ord of orders) {
       const card = document.createElement("div");
-      card.className = "card";
+      card.className = "admin-card";
 
       let itemsHtml = "";
       for (const i of ord.items) {
-        itemsHtml += `<div>• ${i.product_name} — ${i.quantity} x ${formatPrice(i.price_at_order_time)}</div>`;
+        itemsHtml += `<div style="margin-bottom:2px;">• <b>${i.product_name}</b> — ${i.quantity} x ${formatPrice(i.price_at_order_time)}</div>`;
       }
 
-      const dateStr = new Date(ord.created_at).toLocaleString("uz-UZ");
+      const dateStr = new Date(ord.created_at).toLocaleString("uz-UZ", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
 
       // Status action buttons
       let actionBtns = "";
       if (ord.status === "pending") {
         actionBtns = `
-          <button class="btn btn-success" onclick="updateStatus(${ord.id}, 'confirmed')">✅ Tasdiqlash</button>
-          <button class="btn btn-danger" onclick="updateStatus(${ord.id}, 'cancelled')">❌ Rad etish</button>
+          <button class="btn btn-success btn-sm" onclick="updateStatus(${ord.id}, 'confirmed')">✅ Tasdiqlash</button>
+          <button class="btn btn-danger btn-sm" onclick="updateStatus(${ord.id}, 'cancelled')">❌ Rad etish</button>
         `;
       } else if (ord.status === "confirmed") {
         actionBtns = `
-          <button class="btn btn-warning" onclick="updateStatus(${ord.id}, 'preparing')">👨‍🍳 Tayyorlash</button>
-          <button class="btn btn-danger" onclick="updateStatus(${ord.id}, 'cancelled')">Bekor qilish</button>
+          <button class="btn btn-primary btn-sm" onclick="updateStatus(${ord.id}, 'preparing')">👨‍🍳 Tayyorlash</button>
+          <button class="btn btn-danger btn-sm" onclick="updateStatus(${ord.id}, 'cancelled')">Bekor qilish</button>
         `;
       } else if (ord.status === "preparing") {
         actionBtns = `
-          <button class="btn btn-primary" onclick="updateStatus(${ord.id}, 'delivering')">🛵 Yetkazishga berish</button>
+          <button class="btn btn-primary btn-sm" onclick="updateStatus(${ord.id}, 'delivering')">🛵 Yetkazishga berish</button>
         `;
       } else if (ord.status === "delivering") {
         actionBtns = `
-          <button class="btn btn-success" onclick="updateStatus(${ord.id}, 'completed')">🎉 Yakunlandi (Topshirildi)</button>
+          <button class="btn btn-success btn-sm" onclick="updateStatus(${ord.id}, 'completed')">🎉 Yakunlandi (Topshirildi)</button>
         `;
       }
 
+      const badgeClass = `badge-${ord.status}`;
+      const statusLabelMap = {
+        pending: "⏳ Kutilmoqda",
+        confirmed: "✅ Tasdiqlandi",
+        preparing: "👨‍🍳 Tayyorlanmoqda",
+        delivering: "🛵 Yetkazilmoqda",
+        completed: "🎉 Yakunlandi",
+        cancelled: "❌ Bekor qilindi",
+      };
+
       card.innerHTML = `
-        <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-          <span style="font-weight:700; font-size:16px;">Buyurtma #${ord.id}</span>
-          <span class="badge-admin" style="text-transform:uppercase;">${ord.status}</span>
+        <div class="admin-card-header">
+          <span style="font-weight:800; font-size:16px; color:var(--text-primary);">Buyurtma #${ord.id}</span>
+          <span class="order-badge ${badgeClass}">${statusLabelMap[ord.status] || ord.status}</span>
         </div>
-        <div style="font-size:12px; color:#888; margin-bottom:8px;">${dateStr}</div>
-        <div style="margin-bottom:8px; font-size:13px;">
+        <div style="font-size:12px; color:var(--text-secondary);">${dateStr}</div>
+        <div style="font-size:13.5px; color:var(--text-primary); line-height:1.5;">
           <div>👤 <b>Mijoz:</b> ${ord.user ? ord.user.full_name : "Noma'lum"}</div>
-          <div>📞 <b>Tel:</b> <a href="tel:${ord.phone}">${ord.phone}</a></div>
+          <div>📞 <b>Tel:</b> <a href="tel:${ord.phone}" style="color:var(--button-color); text-decoration:none; font-weight:700;">${ord.phone}</a></div>
           <div>📍 <b>Manzil:</b> ${ord.address}</div>
           <div>💳 <b>To'lov:</b> ${ord.payment_type === "cash" ? "Naqd pul" : "Karta"}</div>
           ${ord.notes ? `<div>📝 <b>Izoh:</b> ${ord.notes}</div>` : ""}
         </div>
-        <div style="background:#f9f9f9; padding:8px; border-radius:6px; font-size:13px; margin-bottom:8px;">
-          <b>Mahsulotlar:</b><br/>${itemsHtml}
+        <div style="background:var(--secondary-bg); border:1px solid var(--border-subtle); padding:10px; border-radius:8px; font-size:13px; color:var(--text-primary);">
+          <div style="font-weight:700; margin-bottom:4px;">Xarid qilingan mahsulotlar:</div>
+          ${itemsHtml}
         </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-          <span>Jami:</span>
-          <span style="font-weight:700; font-size:16px; color:var(--button-color);">${formatPrice(ord.total_price)}</span>
+        <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px dashed var(--border-subtle); padding-top:8px;">
+          <span style="font-weight:600; color:var(--text-secondary);">Jami summa:</span>
+          <span style="font-weight:800; font-size:16px; color:var(--button-color);">${formatPrice(ord.total_price)}</span>
         </div>
-        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:4px;">
           ${actionBtns}
         </div>
       `;
@@ -125,7 +173,7 @@ async function loadOrders() {
     }
   } catch (err) {
     console.error("Load orders error:", err);
-    elOrdersContainer.innerHTML = `<div style="color:red; text-align:center;">Xatolik: ${err.message}</div>`;
+    elOrdersContainer.innerHTML = `<div style="color:var(--danger-color); text-align:center; padding:20px;">Xatolik: ${err.message}</div>`;
   }
 }
 
@@ -139,49 +187,76 @@ window.updateStatus = async (orderId, newStatus) => {
   }
 };
 
-// 3. Products Tab
+// 3. Products Tab with Skeletons
 const elProductsContainer = document.getElementById("admin-products-list");
 const elProductModal = document.getElementById("product-modal");
 const elProductForm = document.getElementById("product-form");
 const elImagePicker = document.getElementById("product-image-picker");
 const elCategorySelect = document.getElementById("product-category-select");
 
+function renderAdminProductsSkeleton() {
+  elProductsContainer.innerHTML = `
+    <div class="admin-card" style="display:flex; gap:12px; align-items:center; padding:12px;">
+      <div class="skeleton" style="width:54px; height:54px; border-radius:8px; flex-shrink:0;"></div>
+      <div style="flex-grow:1;">
+        <div class="skeleton" style="width:60%; height:16px; margin-bottom:8px;"></div>
+        <div class="skeleton" style="width:40%; height:14px;"></div>
+      </div>
+    </div>
+    <div class="admin-card" style="display:flex; gap:12px; align-items:center; padding:12px;">
+      <div class="skeleton" style="width:54px; height:54px; border-radius:8px; flex-shrink:0;"></div>
+      <div style="flex-grow:1;">
+        <div class="skeleton" style="width:50%; height:16px; margin-bottom:8px;"></div>
+        <div class="skeleton" style="width:35%; height:14px;"></div>
+      </div>
+    </div>
+  `;
+}
+
 async function loadProducts() {
   try {
-    elProductsContainer.innerHTML = `<div style="text-align:center; padding:20px; color:#888;">Yuklanmoqda...</div>`;
+    renderAdminProductsSkeleton();
     const products = await adminApi.getProducts();
 
     if (!products.length) {
-      elProductsContainer.innerHTML = `<div style="text-align:center; padding:30px; color:#888;">Mahsulotlar yo'q</div>`;
+      elProductsContainer.innerHTML = `
+        <div style="text-align:center; padding:40px 16px; color:var(--text-secondary);">
+          <div style="font-size:42px; margin-bottom:8px;">🏷</div>
+          <div style="font-weight:700; font-size:15px;">Hozircha mahsulotlar yo'q</div>
+          <div style="font-size:13px; margin-top:4px;">Yuqoridagi tugma orqali yangi mahsulot qo'shing</div>
+        </div>
+      `;
       return;
     }
 
     elProductsContainer.innerHTML = "";
     for (const p of products) {
       const card = document.createElement("div");
-      card.className = "product-admin-card";
+      card.className = "admin-product-item";
 
       const firstImg = p.images && p.images.length > 0 ? p.images[0].file_id : null;
       const imgUrl = getImageUrl(firstImg);
 
       card.innerHTML = `
-        <img src="${imgUrl || 'data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'60\' height=\'60\'><rect width=\'60\' height=\'60\' fill=\'%23eee\'/></svg>'}" class="product-admin-img" alt="${p.name}">
-        <div class="product-admin-info">
-          <div class="product-admin-name">${p.name}</div>
-          <div class="product-admin-price">${formatPrice(p.price)}</div>
-          <div style="font-size:11px; color:${p.is_active ? 'green' : 'red'};">${p.is_active ? 'Faol' : 'Nofaol'}</div>
+        <img src="${imgUrl || 'data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'60\' height=\'60\'><rect width=\'60\' height=\'60\' fill=\'%23eee\'/></svg>'}" class="admin-prod-img" alt="${p.name}">
+        <div class="admin-prod-info">
+          <div class="admin-prod-name">${p.name}</div>
+          <div class="admin-prod-price">${formatPrice(p.price)}</div>
+          <div style="font-size:11.5px; font-weight:700; color:${p.is_active ? 'var(--success-color)' : 'var(--danger-color)'};">
+            ${p.is_active ? '● Faol' : '● Nofaol'}
+          </div>
         </div>
-        <div class="product-admin-actions">
-          <button class="btn btn-secondary" onclick="openEditProduct(${p.id})">✏️</button>
-          <button class="btn btn-primary" onclick="announceToGroup(${p.id})" title="Guruhga e'lon qilish">📢</button>
-          <button class="btn btn-danger" onclick="deleteProduct(${p.id})">🗑</button>
+        <div style="display:flex; gap:6px;">
+          <button class="btn btn-secondary btn-sm" onclick="openEditProduct(${p.id})">✏️</button>
+          <button class="btn btn-primary btn-sm" onclick="announceToGroup(${p.id})" title="Guruhga e'lon qilish">📢</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteProduct(${p.id})">🗑</button>
         </div>
       `;
       elProductsContainer.appendChild(card);
     }
   } catch (err) {
     console.error("Load products error:", err);
-    elProductsContainer.innerHTML = `<div style="color:red; text-align:center;">Xatolik: ${err.message}</div>`;
+    elProductsContainer.innerHTML = `<div style="color:var(--danger-color); text-align:center; padding:20px;">Xatolik: ${err.message}</div>`;
   }
 }
 
@@ -189,7 +264,7 @@ window.announceToGroup = async (productId) => {
   if (!confirm("Ushbu mahsulotni guruhga e'lon qilinsinmi?")) return;
   try {
     await adminApi.announceProduct(productId);
-    alert("Mahsulot muvaffaqiyatli e'lon qilindi!");
+    alert("🎉 Mahsulot muvaffaqiyatli guruhga e'lon qilindi!");
   } catch (err) {
     alert("Xatolik: " + err.message);
   }
@@ -235,75 +310,75 @@ async function populateCategorySelect(selectedId = null) {
 }
 
 async function renderImagePicker() {
-  elImagePicker.innerHTML = `<div style="grid-column:span 3; font-size:12px; color:#888; text-align:center; padding:10px;">Rasmlar yuklanmoqda...</div>`;
+  elImagePicker.innerHTML = `<div style="grid-column:span 3; font-size:12px; color:var(--text-secondary); text-align:center; padding:10px;">Rasmlar yuklanmoqda...</div>`;
   try {
-    // Fetch unused images
     uploadedImagesList = await adminApi.getUploadedImages(false);
     if (!uploadedImagesList.length && selectedImageFileIds.size === 0) {
       elImagePicker.innerHTML = `
-        <div style="grid-column:span 3; font-size:12px; color:#888; text-align:center; padding:10px;">
-          Ishlatilmagan rasm yo'q. Rasm yuklash uchun botga rasm yuboring!
+        <div style="grid-column:span 3; font-size:12.5px; color:var(--text-secondary); text-align:center; padding:12px; background:var(--secondary-bg); border-radius:8px;">
+          Ishlatilmagan rasmlar yo'q.<br/>Yangi rasm qo'shish uchun botga rasm yuboring!
         </div>
       `;
       return;
     }
 
     elImagePicker.innerHTML = "";
-    // Display selected images first
+    // If editing, also show currently selected images
     for (const fileId of selectedImageFileIds) {
       const item = document.createElement("div");
-      item.className = "picker-item selected";
-      item.innerHTML = `<img src="${getImageUrl(fileId)}" />`;
-      item.onclick = () => {
-        selectedImageFileIds.delete(fileId);
-        item.classList.remove("selected");
-      };
+      item.className = "gallery-item selected";
+      item.innerHTML = `<img src="${getImageUrl(fileId)}" class="gallery-img">`;
+      item.onclick = () => toggleImageSelection(fileId, item);
       elImagePicker.appendChild(item);
     }
 
-    // Display unused uploaded images
     for (const img of uploadedImagesList) {
       if (selectedImageFileIds.has(img.file_id)) continue;
       const item = document.createElement("div");
-      item.className = "picker-item";
-      item.innerHTML = `<img src="${getImageUrl(img.file_id)}" />`;
-      item.onclick = () => {
-        if (selectedImageFileIds.has(img.file_id)) {
-          selectedImageFileIds.delete(img.file_id);
-          item.classList.remove("selected");
-        } else {
-          selectedImageFileIds.add(img.file_id);
-          item.classList.add("selected");
-        }
-      };
+      item.className = "gallery-item";
+      item.innerHTML = `<img src="${getImageUrl(img.file_id)}" class="gallery-img">`;
+      item.onclick = () => toggleImageSelection(img.file_id, item);
       elImagePicker.appendChild(item);
     }
   } catch (err) {
-    elImagePicker.innerHTML = `<div style="grid-column:span 3; color:red; font-size:12px;">Rasmlarni yuklashda xatolik</div>`;
+    console.error("Image picker load error:", err);
+  }
+}
+
+function toggleImageSelection(fileId, itemEl) {
+  if (selectedImageFileIds.has(fileId)) {
+    selectedImageFileIds.delete(fileId);
+    itemEl.classList.remove("selected");
+  } else {
+    selectedImageFileIds.add(fileId);
+    itemEl.classList.add("selected");
   }
 }
 
 window.openEditProduct = async (productId) => {
   editingProductId = productId;
   document.getElementById("product-modal-title").textContent = "Mahsulotni tahrirlash";
-  selectedImageFileIds.clear();
-
-  const products = await adminApi.getProducts();
-  const prod = products.find((p) => p.id === productId);
-  if (!prod) return;
-
-  document.getElementById("prod-name").value = prod.name;
-  document.getElementById("prod-price").value = prod.price;
-  document.getElementById("prod-desc").value = prod.description || "";
-  document.getElementById("prod-active").checked = prod.is_active;
-
-  if (prod.images) {
-    prod.images.forEach((img) => selectedImageFileIds.add(img.file_id));
-  }
-
-  await populateCategorySelect(prod.category_id);
-  await renderImagePicker();
   elProductModal.classList.add("active");
+
+  try {
+    const p = await adminApi.getProduct(productId);
+    document.getElementById("prod-name").value = p.name;
+    document.getElementById("prod-price").value = p.price;
+    document.getElementById("prod-desc").value = p.description || "";
+    document.getElementById("prod-active").checked = p.is_active;
+
+    await populateCategorySelect(p.category_id);
+
+    selectedImageFileIds.clear();
+    if (p.images) {
+      for (const img of p.images) {
+        selectedImageFileIds.add(img.file_id);
+      }
+    }
+    renderImagePicker();
+  } catch (err) {
+    alert("Mahsulotni yuklab bo'lmadi: " + err.message);
+  }
 };
 
 elProductForm.onsubmit = async (e) => {
@@ -316,124 +391,121 @@ elProductForm.onsubmit = async (e) => {
   const is_active = document.getElementById("prod-active").checked;
   const image_file_ids = Array.from(selectedImageFileIds);
 
-  const payload = {
-    name,
-    price,
-    description: description || null,
-    category_id,
-    is_active,
-    image_file_ids,
-  };
+  const saveBtn = e.target.querySelector('button[type="submit"]');
+  const origBtnText = saveBtn.textContent;
+  saveBtn.disabled = true;
+  saveBtn.innerHTML = `<span class="spinner"></span> Saqlanmoqda...`;
 
   try {
     if (editingProductId) {
-      await adminApi.updateProduct(editingProductId, payload);
+      await adminApi.updateProduct(editingProductId, {
+        name,
+        price,
+        description: description || null,
+        category_id,
+        is_active,
+        image_file_ids,
+      });
     } else {
-      await adminApi.createProduct(payload);
+      await adminApi.createProduct({
+        name,
+        price,
+        description: description || null,
+        category_id,
+        is_active,
+        image_file_ids,
+      });
     }
+
     elProductModal.classList.remove("active");
     loadProducts();
   } catch (err) {
     alert("Xatolik: " + err.message);
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = origBtnText;
   }
 };
 
-// 4. Images Gallery Tab
-const elImagesGallery = document.getElementById("admin-images-gallery");
+// 4. Uploaded Images Gallery Tab
+const elGalleryContainer = document.getElementById("admin-gallery-list");
 
 async function loadImagesGallery() {
   try {
-    elImagesGallery.innerHTML = `<div style="text-align:center; padding:20px; color:#888;">Yuklanmoqda...</div>`;
+    elGalleryContainer.innerHTML = `<div style="grid-column:span 3; text-align:center; padding:20px; color:var(--text-secondary);">Yuklanmoqda...</div>`;
     const images = await adminApi.getUploadedImages();
 
     if (!images.length) {
-      elImagesGallery.innerHTML = `
-        <div style="text-align:center; padding:30px; color:#888;">
-          Hozircha bot orqali rasmlar yuklanmagan.<br/>
-          Telegram botingizga rasm yoki albom yuboring!
+      elGalleryContainer.innerHTML = `
+        <div style="grid-column:span 3; text-align:center; padding:40px 16px; color:var(--text-secondary);">
+          <div style="font-size:42px; margin-bottom:8px;">📸</div>
+          <div style="font-weight:700; font-size:15px;">Galereyada rasmlar yo'q</div>
+          <div style="font-size:13px; margin-top:4px;">Telegram botingizga rasm yuboring, u avtomatik shu yerda paydo bo'ladi!</div>
         </div>
       `;
       return;
     }
 
-    elImagesGallery.innerHTML = "";
+    elGalleryContainer.innerHTML = "";
     for (const img of images) {
-      const card = document.createElement("div");
-      card.className = "card";
-      card.style.display = "flex";
-      card.style.gap = "12px";
-      card.style.alignItems = "center";
-
-      const dateStr = new Date(img.uploaded_at).toLocaleString("uz-UZ");
-
-      card.innerHTML = `
-        <img src="${getImageUrl(img.file_id)}" style="width:70px; height:70px; border-radius:8px; object-fit:cover; background:#eee;" />
-        <div style="flex-grow:1; font-size:13px;">
-          <div><b>Status:</b> ${img.is_used ? '✅ Mahsulotga biriktirilgan' : '⏳ Yangi (ishlatilmagan)'}</div>
-          <div style="font-size:11px; color:#888;">Yuklangan vaqt: ${dateStr}</div>
+      const item = document.createElement("div");
+      item.className = "gallery-item";
+      item.innerHTML = `
+        <img src="${getImageUrl(img.file_id)}" class="gallery-img" alt="Uploaded Image">
+        <div style="position:absolute; bottom:4px; right:4px; font-size:10px; background:rgba(0,0,0,0.6); color:white; padding:2px 6px; border-radius:4px;">
+          ${img.is_used ? "Band" : "Bo'sh"}
         </div>
-        <button class="btn btn-danger" onclick="deleteImageRecord(${img.id})">🗑</button>
       `;
-      elImagesGallery.appendChild(card);
+      elGalleryContainer.appendChild(item);
     }
   } catch (err) {
-    elImagesGallery.innerHTML = `<div style="color:red; text-align:center;">Xatolik: ${err.message}</div>`;
+    console.error("Load images error:", err);
   }
 }
 
-window.deleteImageRecord = async (imageId) => {
-  if (!confirm("Ushbu rasmni o'chirmoqchimisiz?")) return;
-  try {
-    await adminApi.deleteUploadedImage(imageId);
-    loadImagesGallery();
-  } catch (err) {
-    alert("Xatolik: " + err.message);
-  }
-};
-
 // 5. Categories Tab
-const elCategoriesList = document.getElementById("admin-categories-list");
-const elCategoryForm = document.getElementById("category-add-form");
+const elCategoriesContainer = document.getElementById("admin-categories-list");
+const elCategoryForm = document.getElementById("category-form");
 
 async function loadCategories() {
   try {
-    elCategoriesList.innerHTML = `<div style="text-align:center; padding:20px; color:#888;">Yuklanmoqda...</div>`;
+    elCategoriesContainer.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-secondary);">Yuklanmoqda...</div>`;
     categoriesList = await adminApi.getCategories();
 
     if (!categoriesList.length) {
-      elCategoriesList.innerHTML = `<div style="text-align:center; padding:20px; color:#888;">Kategoriyalar yo'q</div>`;
+      elCategoriesContainer.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-secondary);">Kategoriyalar yo'q</div>`;
       return;
     }
 
-    elCategoriesList.innerHTML = "";
+    elCategoriesContainer.innerHTML = "";
     for (const cat of categoriesList) {
-      const card = document.createElement("div");
-      card.className = "card";
-      card.style.display = "flex";
-      card.style.justifyContent = "space-between";
-      card.style.alignItems = "center";
-
-      card.innerHTML = `
+      const row = document.createElement("div");
+      row.className = "admin-card";
+      row.style.display = "flex";
+      row.style.justifyContent = "space-between";
+      row.style.alignItems = "center";
+      row.style.padding = "10px 14px";
+      row.innerHTML = `
         <div>
-          <b>${cat.name}</b>
-          <span style="font-size:12px; color:#888; margin-left:8px;">Tartib: ${cat.sort_order}</span>
+          <span style="font-weight:700; color:var(--text-primary); font-size:15px;">${cat.name}</span>
+          <span style="font-size:12px; color:var(--text-secondary); margin-left:8px;">(tartib: ${cat.sort_order})</span>
         </div>
-        <button class="btn btn-danger" onclick="deleteCategoryRecord(${cat.id})">🗑</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteCategory(${cat.id})">🗑 O'chirish</button>
       `;
-      elCategoriesList.appendChild(card);
+      elCategoriesContainer.appendChild(row);
     }
   } catch (err) {
-    elCategoriesList.innerHTML = `<div style="color:red; text-align:center;">Xatolik: ${err.message}</div>`;
+    console.error("Load categories error:", err);
   }
 }
 
 elCategoryForm.onsubmit = async (e) => {
   e.preventDefault();
-  const name = document.getElementById("new-cat-name").value.trim();
-  const sort_order = parseInt(document.getElementById("new-cat-sort").value) || 0;
+  const name = document.getElementById("cat-name").value.trim();
+  const sort_order = parseInt(document.getElementById("cat-order").value) || 0;
 
   try {
-    await adminApi.createCategory({ name, sort_order, is_active: true });
+    await adminApi.createCategory({ name, sort_order });
     elCategoryForm.reset();
     loadCategories();
   } catch (err) {
@@ -441,8 +513,8 @@ elCategoryForm.onsubmit = async (e) => {
   }
 };
 
-window.deleteCategoryRecord = async (catId) => {
-  if (!confirm("Kategoriyani o'chirmoqchimisiz?")) return;
+window.deleteCategory = async (catId) => {
+  if (!confirm("Ushbu kategoriyani o'chirmoqchimisiz?")) return;
   try {
     await adminApi.deleteCategory(catId);
     loadCategories();
@@ -451,7 +523,7 @@ window.deleteCategoryRecord = async (catId) => {
   }
 };
 
-// 6. Settings Tab (White-Label)
+// 6. Settings Tab
 const elSettingsForm = document.getElementById("settings-form");
 
 async function loadSettings() {
@@ -475,6 +547,10 @@ elSettingsForm.onsubmit = async (e) => {
   const currency = document.getElementById("setting-currency").value.trim();
   const logo_file_id = document.getElementById("setting-logo-id").value.trim();
 
+  const saveBtn = e.target.querySelector('button[type="submit"]');
+  saveBtn.disabled = true;
+  saveBtn.innerHTML = `<span class="spinner"></span> Saqlanmoqda...`;
+
   try {
     await adminApi.updateStoreSettings({
       store_name,
@@ -483,17 +559,18 @@ elSettingsForm.onsubmit = async (e) => {
       currency: currency || "so'm",
       logo_file_id: logo_file_id || null,
     });
-    alert("Do'kon sozlamalari muvaffaqiyatli saqlandi!");
+    alert("🎉 Do'kon sozlamalari muvaffaqiyatli saqlandi!");
     loadSettings();
   } catch (err) {
     alert("Xatolik: " + err.message);
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = "Sozlamalarni saqlash";
   }
 };
 
 // Boot — Admin huquqini tekshirish
-const tg = window.Telegram?.WebApp;
 async function bootAdmin() {
-  // Agar Telegram WebApp orqali kirmagan bo'lsa (to'g'ridan-to'g'ri brauzerda) — davom et
   if (tg && tg.initData) {
     try {
       const meResp = await fetch("/api/store-settings/me", {
@@ -505,12 +582,10 @@ async function bootAdmin() {
       if (!meResp.ok) throw new Error("403");
       const me = await meResp.json();
       if (!me.is_admin) {
-        // Admin emas — mijozlar sahifasiga qaytarish
         window.location.replace("/");
         return;
       }
     } catch (err) {
-      // initData noto'g'ri yoki muammo — quyi darajada xatolik
       console.warn("Admin tekshiruvi muvaffaqiyatsiz:", err.message);
     }
   }

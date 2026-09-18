@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 
 from core.database import get_db
+from core.cache import invalidate_catalog_cache
 from api.deps import get_current_admin
 from models.admin import Admin
 from models.category import Category
@@ -58,6 +59,7 @@ async def create_category_admin(
     db.add(cat)
     await db.commit()
     await db.refresh(cat)
+    invalidate_catalog_cache()
     return cat
 
 
@@ -83,6 +85,7 @@ async def update_category_admin(
 
     await db.commit()
     await db.refresh(cat)
+    invalidate_catalog_cache()
     return cat
 
 
@@ -100,4 +103,5 @@ async def delete_category_admin(
 
     await db.delete(cat)
     await db.commit()
+    invalidate_catalog_cache()
     return {"status": "success", "message": "Kategoriya o'chirildi"}

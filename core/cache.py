@@ -1,9 +1,9 @@
 """
-In-memory cache for store settings and admin IDs.
+In-memory cache for store settings, admin IDs, and catalog (products & categories).
 Permanent in-memory storage for admin IDs, with settings.ADMIN_TELEGRAM_ID as guaranteed admin.
 """
 import logging
-from typing import Optional, Dict, Any, Set
+from typing import Optional, Dict, Any, Set, List
 from core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -60,3 +60,34 @@ def is_admin_id(telegram_id: int) -> bool:
     if settings.ADMIN_TELEGRAM_ID and int(telegram_id) == int(settings.ADMIN_TELEGRAM_ID):
         return True
     return int(telegram_id) in _admin_ids
+
+
+# ─── Catalog Cache (Products & Categories) ───────────────────────────────────
+_categories_cache: Optional[List[Dict[str, Any]]] = None
+_products_cache: Optional[List[Dict[str, Any]]] = None
+
+
+def get_cached_categories() -> Optional[List[Dict[str, Any]]]:
+    return _categories_cache
+
+
+def set_cached_categories(categories: List[Dict[str, Any]]) -> None:
+    global _categories_cache
+    _categories_cache = categories
+
+
+def get_cached_products() -> Optional[List[Dict[str, Any]]]:
+    return _products_cache
+
+
+def set_cached_products(products: List[Dict[str, Any]]) -> None:
+    global _products_cache
+    _products_cache = products
+
+
+def invalidate_catalog_cache() -> None:
+    """Call whenever admin creates, updates, or deletes product or category."""
+    global _categories_cache, _products_cache
+    _categories_cache = None
+    _products_cache = None
+    logger.debug("Catalog cache invalidated.")

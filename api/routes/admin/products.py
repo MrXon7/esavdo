@@ -11,6 +11,7 @@ from models.admin import Admin
 from models.product import Product, ProductImage
 from models.image import UploadedImage
 from bot.services.notifier import announce_product_to_group
+from core.cache import invalidate_catalog_cache
 
 router = APIRouter(prefix="/api/admin/products", tags=["Admin - Products"])
 
@@ -102,6 +103,7 @@ async def create_product_admin(
         )
 
     await db.commit()
+    invalidate_catalog_cache()
 
     # Re-fetch with images
     result = await db.execute(
@@ -163,6 +165,7 @@ async def update_product_admin(
             )
 
     await db.commit()
+    invalidate_catalog_cache()
 
     result = await db.execute(
         select(Product)
@@ -186,6 +189,7 @@ async def delete_product_admin(
 
     await db.delete(product)
     await db.commit()
+    invalidate_catalog_cache()
     return {"status": "success", "message": "Mahsulot muvaffaqiyatli o'chirildi"}
 
 

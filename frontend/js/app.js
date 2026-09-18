@@ -3,10 +3,20 @@ import { cart } from "./cart.js";
 
 const tg = window.Telegram?.WebApp;
 
+// Theme Synchronization with Telegram
+if (tg) {
+  tg.ready();
+  tg.expand();
+  if (tg.colorScheme) {
+    document.documentElement.setAttribute("data-theme", tg.colorScheme);
+  }
+}
+
 // App State
 let currentView = "catalog"; // "catalog" | "cart" | "orders" | "checkout"
 let categories = [];
 let selectedCategoryId = null;
+let allProducts = []; // Client-side cache for 0ms filtering & search
 let products = [];
 let activeProductModal = null;
 let storeSettings = null;
@@ -37,12 +47,56 @@ const views = document.querySelectorAll(".view");
 // Helper: Image URL
 function getImageUrl(fileId) {
   if (!fileId) {
-    return 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" fill="%23e5e5ea"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%238e8e93" font-size="14" font-family="sans-serif">Rasm yo‘q</text></svg>';
+    return 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" fill="%23e2e8f0"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%2394a3b8" font-size="14" font-family="sans-serif">Rasm yo‘q</text></svg>';
   }
   return `/images/${fileId}`;
 }
 
-// 1. Initialize Store Settings (White-Label)
+// ─── Skeleton Loaders ───────────────────────────────────────────────────────
+function renderCategoriesSkeleton() {
+  elCategories.innerHTML = `
+    <div class="skeleton skeleton-pill" style="width: 75px;"></div>
+    <div class="skeleton skeleton-pill" style="width: 90px;"></div>
+    <div class="skeleton skeleton-pill" style="width: 80px;"></div>
+    <div class="skeleton skeleton-pill" style="width: 70px;"></div>
+  `;
+}
+
+function renderProductsSkeleton(count = 4) {
+  let skeletonsHtml = "";
+  for (let i = 0; i < count; i++) {
+    skeletonsHtml += `
+      <div class="skeleton-card">
+        <div class="skeleton skeleton-card-img"></div>
+        <div class="skeleton-card-body">
+          <div class="skeleton skeleton-text"></div>
+          <div class="skeleton skeleton-text short"></div>
+          <div class="skeleton skeleton-text price"></div>
+          <div class="skeleton skeleton-btn"></div>
+        </div>
+      </div>
+    `;
+  }
+  elProductsGrid.innerHTML = skeletonsHtml;
+}
+
+function renderOrdersSkeleton() {
+  elOrdersList.innerHTML = `
+    <div class="skeleton-card" style="padding: 16px; margin-bottom: 12px;">
+      <div class="skeleton skeleton-text" style="width: 40%; height: 18px; margin-bottom: 12px;"></div>
+      <div class="skeleton skeleton-text" style="width: 70%; margin-bottom: 8px;"></div>
+      <div class="skeleton skeleton-text" style="width: 50%; margin-bottom: 12px;"></div>
+      <div class="skeleton skeleton-text" style="width: 30%; height: 20px;"></div>
+    </div>
+    <div class="skeleton-card" style="padding: 16px;">
+      <div class="skeleton skeleton-text" style="width: 40%; height: 18px; margin-bottom: 12px;"></div>
+      <div class="skeleton skeleton-text" style="width: 60%; margin-bottom: 8px;"></div>
+      <div class="skeleton skeleton-text" style="width: 30%; height: 20px;"></div>
+    </div>
+  `;
+}
+
+// ─── 1. Initialize Store Settings ───────────────────────────────────────────
 async function initStore() {
   try {
     storeSettings = await api.getStoreSettings();
@@ -63,9 +117,10 @@ async function initStore() {
   }
 }
 
-// 2. Load Categories
+// ─── 2. Categories ──────────────────────────────────────────────────────────
 async function loadCategories() {
   try {
+    renderCategoriesSkeleton();
     categories = await api.getCategories();
     renderCategories();
   } catch (err) {
@@ -94,19 +149,41 @@ function renderCategories() {
 function selectCategory(id) {
   selectedCategoryId = id;
   renderCategories();
-  loadProducts();
+  // 0ms instant client-side filter
+  applyFilters();
 }
 
-// 3. Load Products
+// ─── 3. Products Loading & Instant Filtering ────────────────────────────────
 async function loadProducts() {
   try {
-    const searchVal = elSearchInput.value.trim() || null;
-    products = await api.getProducts(selectedCategoryId, searchVal);
-    renderProducts();
+    renderProductsSkeleton(4);
+    // Fetch full active catalog into memory
+    allProducts = await api.getProducts();
+    applyFilters();
   } catch (err) {
     console.error("Products load error:", err);
-    elProductsGrid.innerHTML = `<div class="empty-state">Mahsulotlarni yuklashda xatolik</div>`;
+    elProductsGrid.innerHTML = `<div class="empty-state" style="grid-column: span 2;">Mahsulotlarni yuklashda xatolik yuz berdi</div>`;
   }
+}
+
+function applyFilters() {
+  const searchVal = (elSearchInput.value || "").trim().toLowerCase();
+  let res = allProducts;
+
+  if (selectedCategoryId !== null) {
+    res = res.filter((p) => p.category_id === selectedCategoryId);
+  }
+
+  if (searchVal) {
+    res = res.filter(
+      (p) =>
+        (p.name || "").toLowerCase().includes(searchVal) ||
+        (p.description || "").toLowerCase().includes(searchVal)
+    );
+  }
+
+  products = res;
+  renderProducts();
 }
 
 function renderProducts() {
@@ -114,7 +191,8 @@ function renderProducts() {
     elProductsGrid.innerHTML = `
       <div class="empty-state" style="grid-column: span 2;">
         <div class="empty-icon">🔍</div>
-        <div>Hozircha mahsulotlar topilmadi</div>
+        <div style="font-weight: 600; font-size: 15px; margin-bottom: 4px;">Hech narsa topilmadi</div>
+        <div style="font-size: 13px;">Boshqa kategoriya yoki qidiruv so'zini sinab ko'ring</div>
       </div>
     `;
     return;
@@ -135,9 +213,9 @@ function renderProducts() {
     if (qtyInCart > 0) {
       actionBtnHtml = `
         <div class="qty-counter" onclick="event.stopPropagation()">
-          <button class="qty-btn btn-dec" data-itemid="${cartItemId}" data-qty="${qtyInCart - 1}">−</button>
+          <button class="qty-btn btn-dec" data-itemid="${cartItemId}" data-prodid="${p.id}" data-qty="${qtyInCart - 1}">−</button>
           <span class="qty-val">${qtyInCart}</span>
-          <button class="qty-btn btn-inc" data-itemid="${cartItemId}" data-qty="${qtyInCart + 1}">+</button>
+          <button class="qty-btn btn-inc" data-itemid="${cartItemId}" data-prodid="${p.id}" data-qty="${qtyInCart + 1}">+</button>
         </div>
       `;
     } else {
@@ -163,12 +241,13 @@ function renderProducts() {
     elProductsGrid.appendChild(card);
   }
 
-  // Attach card button handlers
+  // 0ms Optimistic Button Handlers
   elProductsGrid.querySelectorAll(".btn-add").forEach((btn) => {
     btn.onclick = async (e) => {
       e.stopPropagation();
       const prodId = parseInt(btn.dataset.prodid);
-      await cart.add(prodId, 1);
+      const prodObj = allProducts.find((x) => x.id === prodId);
+      await cart.add(prodId, 1, prodObj);
       renderProducts();
     };
   });
@@ -176,7 +255,7 @@ function renderProducts() {
   elProductsGrid.querySelectorAll(".btn-dec").forEach((btn) => {
     btn.onclick = async (e) => {
       e.stopPropagation();
-      const itemId = parseInt(btn.dataset.itemid);
+      const itemId = btn.dataset.itemid;
       const newQty = parseInt(btn.dataset.qty);
       await cart.updateQuantity(itemId, newQty);
       renderProducts();
@@ -186,7 +265,7 @@ function renderProducts() {
   elProductsGrid.querySelectorAll(".btn-inc").forEach((btn) => {
     btn.onclick = async (e) => {
       e.stopPropagation();
-      const itemId = parseInt(btn.dataset.itemid);
+      const itemId = btn.dataset.itemid;
       const newQty = parseInt(btn.dataset.qty);
       await cart.updateQuantity(itemId, newQty);
       renderProducts();
@@ -194,14 +273,14 @@ function renderProducts() {
   });
 }
 
-// 4. Product Modal
+// ─── 4. Product Modal ───────────────────────────────────────────────────────
 function openProductModal(prod) {
   activeProductModal = prod;
   const firstImage = prod.images && prod.images.length > 0 ? prod.images[0].file_id : null;
   elModalImg.src = getImageUrl(firstImage);
   elModalTitle.textContent = prod.name;
   elModalPrice.textContent = cart.formatPrice(prod.price);
-  elModalDesc.textContent = prod.description || "Tavsif berilmagan.";
+  elModalDesc.textContent = prod.description || "Ushbu mahsulot uchun batafsil tavsif kiritilmagan.";
 
   elProductModal.classList.add("active");
   if (tg) tg.BackButton.show();
@@ -221,21 +300,24 @@ elProductModal.onclick = (e) => {
 
 elModalAddBtn.onclick = async () => {
   if (activeProductModal) {
-    await cart.add(activeProductModal.id, 1);
+    await cart.add(activeProductModal.id, 1, activeProductModal);
     closeProductModal();
     renderProducts();
   }
 };
 
-// 5. Cart Rendering
+// ─── 5. Cart Rendering ──────────────────────────────────────────────────────
 function renderCart() {
   if (!cart.items.length) {
     elCartItemsList.innerHTML = `
       <div class="empty-state">
         <div class="empty-icon">🛒</div>
-        <div>Savatingiz bo'sh</div>
-        <button class="btn-primary" style="margin-top: 16px;" id="btn-back-to-catalog">
-          Xarid qilish
+        <div style="font-weight: 700; font-size: 16px; margin-bottom: 6px;">Savatingiz hozircha bo'sh</div>
+        <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
+          Do'konimizdan mahsulotlarni tanlab savatga qo'shing
+        </div>
+        <button class="btn-primary" style="margin-top: 12px; max-width: 200px; margin-left: auto; margin-right: auto;" id="btn-back-to-catalog">
+          Katalogga o'tish
         </button>
       </div>
     `;
@@ -274,9 +356,10 @@ function renderCart() {
 
   elCartTotalPrice.textContent = cart.formatPrice(cart.getTotalPrice());
 
+  // 0ms Optimistic Handlers inside Cart
   elCartItemsList.querySelectorAll(".cart-dec").forEach((btn) => {
     btn.onclick = async () => {
-      await cart.updateQuantity(parseInt(btn.dataset.id), parseInt(btn.dataset.qty));
+      await cart.updateQuantity(btn.dataset.id, parseInt(btn.dataset.qty));
       renderCart();
       renderProducts();
     };
@@ -284,18 +367,19 @@ function renderCart() {
 
   elCartItemsList.querySelectorAll(".cart-inc").forEach((btn) => {
     btn.onclick = async () => {
-      await cart.updateQuantity(parseInt(btn.dataset.id), parseInt(btn.dataset.qty));
+      await cart.updateQuantity(btn.dataset.id, parseInt(btn.dataset.qty));
       renderCart();
       renderProducts();
     };
   });
 }
 
-// 6. Navigation / Views Switch
+// ─── 6. Navigation / Views Switch ───────────────────────────────────────────
 function switchView(viewName) {
   currentView = viewName;
   views.forEach((v) => v.classList.remove("active"));
-  document.getElementById(`view-${viewName}`).classList.add("active");
+  const targetView = document.getElementById(`view-${viewName}`);
+  if (targetView) targetView.classList.add("active");
 
   navBtns.forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.view === viewName);
@@ -309,7 +393,7 @@ function switchView(viewName) {
     renderProducts();
   }
 
-  // Telegram BackButton management
+  // Telegram BackButton
   if (tg) {
     if (viewName === "checkout" || viewName === "cart" || viewName === "orders") {
       tg.BackButton.show();
@@ -329,7 +413,7 @@ document.getElementById("btn-go-to-checkout").onclick = () => {
   switchView("checkout");
 };
 
-// 7. Checkout Form Submission
+// ─── 7. Checkout Form Submission with Smooth Spinner ────────────────────────
 const checkoutForm = document.getElementById("checkout-form");
 checkoutForm.onsubmit = async (e) => {
   e.preventDefault();
@@ -339,13 +423,13 @@ checkoutForm.onsubmit = async (e) => {
   const notes = document.getElementById("input-notes").value.trim();
 
   if (!address || !phone) {
-    alert("Iltimos, manzil va telefon raqamingizni kiriting!");
+    alert("Iltimos, yetkazib berish manzili va telefon raqamingizni kiriting!");
     return;
   }
 
   const submitBtn = document.getElementById("btn-submit-order");
   submitBtn.disabled = true;
-  submitBtn.textContent = "Buyurtma berilmoqda...";
+  submitBtn.innerHTML = `<span class="spinner"></span> Buyurtma berilmoqda...`;
 
   try {
     await api.createOrder({
@@ -356,28 +440,31 @@ checkoutForm.onsubmit = async (e) => {
     });
 
     await cart.load();
-    alert("Buyurtmangiz muvaffaqiyatli qabul qilindi!");
+    alert("🎉 Buyurtmangiz muvaffaqiyatli qabul qilindi!");
     checkoutForm.reset();
     switchView("orders");
   } catch (err) {
-    alert("Xatolik: " + err.message);
+    alert("Xatolik yuz berdi: " + err.message);
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = "Buyurtmani tasdiqlash";
   }
 };
 
-// 8. Orders History
+// ─── 8. Orders History with Skeletons ───────────────────────────────────────
 async function loadOrders() {
   try {
-    elOrdersList.innerHTML = `<div class="empty-state">Yuklanmoqda...</div>`;
+    renderOrdersSkeleton();
     const orders = await api.getMyOrders();
 
     if (!orders.length) {
       elOrdersList.innerHTML = `
         <div class="empty-state">
           <div class="empty-icon">📦</div>
-          <div>Buyurtmalar tarixi bo'sh</div>
+          <div style="font-weight: 700; font-size: 16px; margin-bottom: 6px;">Buyurtmalar tarixi bo'sh</div>
+          <div style="font-size: 13px; color: var(--text-secondary);">
+            Hali hech qanday buyurtma bermagansiz
+          </div>
         </div>
       `;
       return;
@@ -417,7 +504,7 @@ async function loadOrders() {
           <span class="order-id">Buyurtma #${ord.id}</span>
           <span class="order-badge ${badgeClass}">${statusText}</span>
         </div>
-        <div style="font-size: 12px; color: var(--hint-color);">${dateStr}</div>
+        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">${dateStr}</div>
         <div style="margin: 6px 0;">${itemsHtml}</div>
         <div class="order-total-line">
           <span>Jami:</span>
@@ -432,16 +519,12 @@ async function loadOrders() {
   }
 }
 
-// 9. Search Debounce
-let searchTimeout = null;
+// ─── 9. Instant Search (0ms client-side) ────────────────────────────────────
 elSearchInput.oninput = () => {
-  clearTimeout(searchTimeout);
-  searchTimeout = setTimeout(() => {
-    loadProducts();
-  }, 350);
+  applyFilters();
 };
 
-// 10. Cart Badge Listener
+// ─── 10. Cart Badge Listener ────────────────────────────────────────────────
 cart.subscribe((items, totalCount, totalPrice) => {
   if (totalCount > 0) {
     elCartCountBadge.textContent = totalCount;
@@ -464,7 +547,7 @@ if (tg) {
   });
 }
 
-// Initial Boot
+// ─── Initial Boot ───────────────────────────────────────────────────────────
 async function startApp() {
   // Check if current user is admin — show Admin Switch button in header
   if (tg && tg.initData) {
@@ -479,10 +562,8 @@ async function startApp() {
     }
   }
 
-  await initStore();
-  await loadCategories();
-  await cart.load();
-  await loadProducts();
+  // Parallel loading for maximum speed
+  await Promise.all([initStore(), loadCategories(), cart.load(), loadProducts()]);
 }
 
 startApp();
