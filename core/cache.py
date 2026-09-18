@@ -1,57 +1,62 @@
 """
 In-memory cache for store settings and admin IDs.
-Avoids repeated DB round-trips for data that rarely changes.
+Permanent in-memory storage for admin IDs, with settings.ADMIN_TELEGRAM_ID as guaranteed admin.
 """
-import asyncio
-import time
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Set
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 
 # ─── Store Settings Cache ───────────────────────────────────────────────────
 _store_settings: Optional[Dict[str, Any]] = None
-_store_settings_ttl: float = 0.0
-STORE_SETTINGS_CACHE_SECONDS = 300  # 5 minutes
 
 
 def get_cached_store_settings() -> Optional[Dict[str, Any]]:
-    if _store_settings and time.monotonic() < _store_settings_ttl:
-        return _store_settings
-    return None
+    return _store_settings
 
 
 def set_cached_store_settings(data: Dict[str, Any]) -> None:
-    global _store_settings, _store_settings_ttl
+    global _store_settings
     _store_settings = data
-    _store_settings_ttl = time.monotonic() + STORE_SETTINGS_CACHE_SECONDS
 
 
 def invalidate_store_settings_cache() -> None:
-    """Call this after admin updates store settings."""
     global _store_settings
     _store_settings = None
-    logger.debug("Store settings cache invalidated")
 
 
-# ─── Admin IDs Cache ─────────────────────────────────────────────────────────
-_admin_ids: Optional[set] = None
-_admin_ids_ttl: float = 0.0
-ADMIN_IDS_CACHE_SECONDS = 120  # 2 minutes
+# ─── Admin IDs Cache (Permanent in-memory set, never expires) ───────────────
+_admin_ids: Set[int] = set()
 
 
-def get_cached_admin_ids() -> Optional[set]:
-    if _admin_ids is not None and time.monotonic() < _admin_ids_ttl:
-        return _admin_ids
-    return None
+def get_cached_admin_ids() -> Set[int]:
+    """
+    Returns all cached admin telegram IDs.
+    Guarantees settings.ADMIN_TELEGRAM_ID is always included.
+    """
+    result = set(_admin_ids)
+    if settings.ADMIN_TELEGRAM_ID and settings.ADMIN_TELEGRAM_ID > 0:
+        result.add(int(settings.ADMIN_TELEGRAM_ID))
+    return result
 
 
-def set_cached_admin_ids(ids: set) -> None:
-    global _admin_ids, _admin_ids_ttl
-    _admin_ids = ids
-    _admin_ids_ttl = time.monotonic() + ADMIN_IDS_CACHE_SECONDS
-
-
-def invalidate_admin_ids_cache() -> None:
+def set_cached_admin_ids(ids: Set[int]) -> None:
+    """
+    Updates in-memory admin IDs set.
+    """
     global _admin_ids
-    _admin_ids = None
+    _admin_ids = set(ids)
+    if settings.ADMIN_TELEGRAM_ID and settings.ADMIN_TELEGRAM_ID > 0:
+        _admin_ids.add(int(settings.ADMIN_TELEGRAM_ID))
+
+
+def is_admin_id(telegram_id: int) -> bool:
+    """
+    Instant check whether a given telegram_id belongs to an admin.
+    """
+    if not telegram_id:
+        return False
+    if settings.ADMIN_TELEGRAM_ID and int(telegram_id) == int(settings.ADMIN_TELEGRAM_ID):
+        return True
+    return int(telegram_id) in _admin_ids

@@ -3,7 +3,7 @@ from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
 from core.config import settings
-from core.cache import get_cached_admin_ids
+from core.cache import is_admin_id
 
 router = Router(name="start_router")
 
@@ -31,9 +31,8 @@ async def cmd_start(message: types.Message):
     app_url = f"{base_url}/"
     admin_app_url = f"{base_url}/admin/"
 
-    # Zero-DB check: in-memory RAM cache check (0.0001ms)
-    admin_ids = get_cached_admin_ids() or set()
-    is_admin = user_id in admin_ids
+    # Zero-DB check: in-memory check (0.0001ms)
+    is_admin = is_admin_id(user_id)
 
     buttons = [
         [
@@ -76,8 +75,7 @@ async def cmd_admin(message: types.Message):
     /admin buyrug'i orqali to'g'ridan-to'g'ri Admin Panelini ochish.
     """
     user_id = message.from_user.id
-    admin_ids = get_cached_admin_ids() or set()
-    is_admin = user_id in admin_ids
+    is_admin = is_admin_id(user_id)
 
     if not is_admin:
         await message.answer("❌ Kechirasiz, sizda admin huquqi yo'q.")

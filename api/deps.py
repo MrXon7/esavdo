@@ -82,14 +82,28 @@ async def get_current_admin(
 ) -> Admin:
     """
     Ensures that the current user is listed in the admins table.
+    Guarantees access for settings.ADMIN_TELEGRAM_ID.
     """
+    is_main_admin = (
+        settings.ADMIN_TELEGRAM_ID
+        and int(current_user.telegram_id) == int(settings.ADMIN_TELEGRAM_ID)
+    )
+
     result = await db.execute(
         select(Admin).where(Admin.telegram_id == current_user.telegram_id)
     )
     admin = result.scalar_one_or_none()
+
     if not admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin huquqi talab qilinadi",
-        )
+        if is_main_admin:
+            # Auto-register main admin from settings if record missing
+            admin = Admin(telegram_id=current_user.telegram_id)
+            db.add(admin)
+            await db.commit()
+            await db.refresh(admin)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin huquqi talab qilinadi",
+            )
     return admin

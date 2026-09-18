@@ -466,18 +466,16 @@ if (tg) {
 
 // Initial Boot
 async function startApp() {
-  // Check if current user is admin — redirect to admin panel if so
+  // Check if current user is admin — show Admin Switch button in header
   if (tg && tg.initData) {
     try {
       const me = await api.getMe();
       if (me && me.is_admin === true) {
-        // Admin — yo'naltirish
-        window.location.replace("/admin/");
-        return;
+        const adminBtn = document.getElementById("header-admin-action");
+        if (adminBtn) adminBtn.style.display = "block";
       }
     } catch (err) {
-      // Admin emas yoki autentifikatsiya yo'q — odatdagi do'kon sifatida davom et
-      console.log("Oddiy foydalanuvchi:", err.message);
+      console.log("Foydalanuvchi ma'lumoti:", err.message);
     }
   }
 

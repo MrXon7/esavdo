@@ -35,15 +35,32 @@ async def get_store_settings():
     )
 
 
+from core.cache import is_admin_id, set_cached_admin_ids, get_cached_admin_ids
+from core.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from models.admin import Admin
+
 @router.get("/me")
-async def get_me(current_user: User = Depends(get_current_user)):
+async def get_me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Returns authenticated user information and admin status.
+    Reliable check: cache + settings.ADMIN_TELEGRAM_ID + DB fallback.
     """
-    admin_ids = get_cached_admin_ids() or set()
+    is_admin = is_admin_id(current_user.telegram_id)
+    if not is_admin:
+        # Check DB just in case cache didn't have this ID
+        res = await db.execute(select(Admin.id).where(Admin.telegram_id == current_user.telegram_id))
+        if res.scalar_one_or_none():
+            is_admin = True
+            set_cached_admin_ids(get_cached_admin_ids() | {current_user.telegram_id})
+
     return {
         "id": current_user.id,
         "telegram_id": current_user.telegram_id,
         "full_name": current_user.full_name,
-        "is_admin": current_user.telegram_id in admin_ids,
+        "is_admin": is_admin,
     }

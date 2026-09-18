@@ -8,25 +8,28 @@ from models.admin import Admin
 from models.image import UploadedImage
 from sqlalchemy import select
 
+from core.cache import is_admin_id, get_cached_admin_ids, set_cached_admin_ids
+
 logger = logging.getLogger(__name__)
 router = Router(name="admin_photo_router")
 
 
 async def _is_admin(telegram_id: int) -> bool:
-    """Check if user is admin — RAM cache first, DB fallback."""
-    cached = get_cached_admin_ids()
-    if cached is not None:
-        return telegram_id in cached
+    """Check if user is admin — memory cache first, DB fallback."""
+    if is_admin_id(telegram_id):
+        return True
 
     try:
         async with AsyncSessionLocal() as session:
-            result = await session.execute(select(Admin.telegram_id))
-            ids = set(row[0] for row in result.fetchall())
-            set_cached_admin_ids(ids)
-            return telegram_id in ids
+            result = await session.execute(
+                select(Admin.telegram_id).where(Admin.telegram_id == telegram_id)
+            )
+            if result.scalar_one_or_none():
+                set_cached_admin_ids(get_cached_admin_ids() | {telegram_id})
+                return True
     except Exception as e:
         logger.error(f"Error checking admin in photo upload: {e}")
-        return False
+    return False
 
 
 @router.message(F.photo)
