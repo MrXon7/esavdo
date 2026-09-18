@@ -140,4 +140,10 @@ export const adminApi = {
       body: JSON.stringify({ status }),
     });
   },
+
+  async deleteOrder(id) {
+    return await request(`${API_BASE}/api/admin/orders/${id}`, {
+      method: "DELETE",
+    });
+  },
 };

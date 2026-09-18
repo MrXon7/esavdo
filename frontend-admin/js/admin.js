@@ -143,7 +143,16 @@ function renderOrdersFromData(orders) {
 
     let itemsHtml = "";
     for (const i of ord.items || []) {
-      itemsHtml += `<div style="margin-bottom:3px;">• <b>${i.product_name}</b> — ${i.quantity} dona x ${formatPrice(i.price_at_order_time)}</div>`;
+      const imgUrl = getImageUrl(i.image_file_id);
+      itemsHtml += `
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid var(--border-subtle);">
+          <img src="${imgUrl}" style="width:42px; height:42px; border-radius:6px; object-fit:cover; background:var(--secondary-bg); flex-shrink:0; border:1px solid var(--border-subtle);" alt="${i.product_name}" />
+          <div style="flex-grow:1; min-width:0;">
+            <div style="font-weight:700; font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${i.product_name}</div>
+            <div style="font-size:12px; color:var(--text-secondary);">${i.quantity} dona x ${formatPrice(i.price_at_order_time)}</div>
+          </div>
+        </div>
+      `;
     }
 
     const dateStr = new Date(ord.created_at).toLocaleString("uz-UZ", {
@@ -172,6 +181,15 @@ function renderOrdersFromData(orders) {
     } else if (ord.status === "delivering") {
       actionBtns = `
         <button class="btn btn-success btn-sm" onclick="updateStatus(${ord.id}, 'completed')">🎉 Topshirildi (Yakunlandi)</button>
+      `;
+    }
+
+    // Add delete option for completed or cancelled orders
+    if (ord.status === "completed" || ord.status === "cancelled") {
+      actionBtns += `
+        <button class="btn btn-sm" onclick="deleteAdminOrder(${ord.id})" style="background:rgba(239, 68, 68, 0.12); color:var(--danger-color); border:1px solid rgba(239, 68, 68, 0.25); font-weight:700;">
+          🗑 Butkul o'chirish
+        </button>
       `;
     }
 
@@ -257,6 +275,20 @@ window.updateStatus = async (orderId, newStatus) => {
   } catch (err) {
     alert("Xatolik: " + err.message);
     loadOrders(true); // Rollback on error
+  }
+};
+
+window.deleteAdminOrder = async (orderId) => {
+  if (!confirm("Haqiqatan ham ushbu buyurtmani butkul o'chirmoqchimisiz?")) return;
+  try {
+    await adminApi.deleteOrder(orderId);
+    if (_allAdminOrders) {
+      _allAdminOrders = _allAdminOrders.filter((o) => o.id !== orderId);
+      filterAndRenderOrders();
+    }
+  } catch (err) {
+    alert("Xatolik: " + err.message);
+    loadOrders(true);
   }
 };
 

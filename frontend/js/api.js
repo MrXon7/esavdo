@@ -109,4 +109,10 @@ export const api = {
   async getMyOrders() {
     return await request(`${API_BASE}/api/orders`);
   },
+
+  async deleteOrder(orderId) {
+    return await request(`${API_BASE}/api/orders/${orderId}`, {
+      method: "DELETE",
+    });
+  },
 };

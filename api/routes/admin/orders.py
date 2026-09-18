@@ -23,6 +23,7 @@ class AdminOrderItemSchema(BaseModel):
     product_name: str
     quantity: int
     price_at_order_time: float
+    image_file_id: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -63,12 +64,14 @@ async def list_orders_admin(
     current_admin: Admin = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Admin: Fetch all orders, optionally filtered by status."""
+    """Admin: Fetch all orders with product images, optionally filtered by status."""
     query = (
         select(Order)
         .options(
             selectinload(Order.user),
-            selectinload(Order.items).selectinload(OrderItem.product),
+            selectinload(Order.items)
+            .selectinload(OrderItem.product)
+            .selectinload(Product.images),
         )
         .order_by(Order.id.desc())
     )
@@ -83,12 +86,18 @@ async def list_orders_admin(
     for o in orders:
         items = []
         for i in o.items:
+            img_id = (
+                i.product.images[0].file_id
+                if (i.product and i.product.images)
+                else None
+            )
             items.append({
                 "id": i.id,
                 "product_id": i.product_id,
                 "product_name": i.product.name if i.product else "O'chirilgan mahsulot",
                 "quantity": i.quantity,
                 "price_at_order_time": float(i.price_at_order_time),
+                "image_file_id": img_id,
             })
         resp.append({
             "id": o.id,
@@ -127,7 +136,9 @@ async def update_order_status_admin(
         .where(Order.id == order_id)
         .options(
             selectinload(Order.user),
-            selectinload(Order.items).selectinload(OrderItem.product),
+            selectinload(Order.items)
+            .selectinload(OrderItem.product)
+            .selectinload(Product.images),
         )
     )
     order = result.scalar_one_or_none()
@@ -155,12 +166,18 @@ async def update_order_status_admin(
 
     items = []
     for i in order.items:
+        img_id = (
+            i.product.images[0].file_id
+            if (i.product and i.product.images)
+            else None
+        )
         items.append({
             "id": i.id,
             "product_id": i.product_id,
             "product_name": i.product.name if i.product else "O'chirilgan mahsulot",
             "quantity": i.quantity,
             "price_at_order_time": float(i.price_at_order_time),
+            "image_file_id": img_id,
         })
 
     return {
@@ -176,3 +193,26 @@ async def update_order_status_admin(
         "user": order.user,
         "items": items,
     }
+
+
+@router.delete("/{order_id}")
+async def delete_order_admin(
+    order_id: int,
+    current_admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: Completely delete a completed or cancelled order."""
+    result = await db.execute(select(Order).where(Order.id == order_id))
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Buyurtma topilmadi")
+
+    if order.status not in [OrderStatus.COMPLETED.value, OrderStatus.CANCELLED.value]:
+        raise HTTPException(
+            status_code=400,
+            detail="Faqat yakunlangan yoki bekor qilingan buyurtmalarni o'chirish mumkin",
+        )
+
+    await db.delete(order)
+    await db.commit()
+    return {"status": "success", "message": "Buyurtma butunlay o'chirildi"}

@@ -30,6 +30,7 @@ class OrderItemDetailSchema(BaseModel):
     product_name: str
     quantity: int
     price_at_order_time: float
+    image_file_id: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -63,7 +64,7 @@ async def create_order(
     result = await db.execute(
         select(CartItem)
         .where(CartItem.user_id == current_user.id)
-        .options(selectinload(CartItem.product))
+        .options(selectinload(CartItem.product).selectinload(Product.images))
     )
     cart_items = result.scalars().all()
 
@@ -110,12 +111,18 @@ async def create_order(
             price_at_order_time=item.product.price,
         )
         db.add(oi)
+        img_id = (
+            item.product.images[0].file_id
+            if (item.product and item.product.images)
+            else None
+        )
         order_items_response.append({
             "id": 0,
             "product_id": item.product_id,
             "product_name": item.product.name,
             "quantity": item.quantity,
             "price_at_order_time": float(item.product.price),
+            "image_file_id": img_id,
         })
         await db.delete(item)
 
@@ -147,12 +154,14 @@ async def get_my_orders(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Retrieve order history for the authenticated user."""
+    """Retrieve order history for the authenticated user with product images."""
     result = await db.execute(
         select(Order)
         .where(Order.user_id == current_user.id)
         .options(
-            selectinload(Order.items).selectinload(OrderItem.product)
+            selectinload(Order.items)
+            .selectinload(OrderItem.product)
+            .selectinload(Product.images)
         )
         .order_by(Order.id.desc())
     )
@@ -162,12 +171,18 @@ async def get_my_orders(
     for o in orders:
         items = []
         for i in o.items:
+            img_id = (
+                i.product.images[0].file_id
+                if (i.product and i.product.images)
+                else None
+            )
             items.append({
                 "id": i.id,
                 "product_id": i.product_id,
                 "product_name": i.product.name if i.product else "O'chirilgan mahsulot",
                 "quantity": i.quantity,
                 "price_at_order_time": float(i.price_at_order_time),
+                "image_file_id": img_id,
             })
         resp.append({
             "id": o.id,
@@ -182,3 +197,28 @@ async def get_my_orders(
             "items": items,
         })
     return resp
+
+
+@router.delete("/{order_id}")
+async def delete_my_order(
+    order_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a completed or cancelled order from user's history."""
+    result = await db.execute(
+        select(Order).where(Order.id == order_id, Order.user_id == current_user.id)
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Buyurtma topilmadi")
+
+    if order.status not in [OrderStatus.COMPLETED.value, OrderStatus.CANCELLED.value]:
+        raise HTTPException(
+            status_code=400,
+            detail="Faqat yakunlangan yoki bekor qilingan buyurtmalarni o'chirish mumkin",
+        )
+
+    await db.delete(order)
+    await db.commit()
+    return {"status": "success", "message": "Buyurtma tarixdan o'chirildi"}

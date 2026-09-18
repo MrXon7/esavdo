@@ -661,6 +661,7 @@ function renderOrdersFromData(orders) {
   for (const ord of orders) {
     const card = document.createElement("div");
     card.className = "order-card";
+    card.dataset.orderId = ord.id;
 
     const badgeClass = `badge-${ord.status}`;
     const statusLabelMap = {
@@ -675,7 +676,16 @@ function renderOrdersFromData(orders) {
 
     let itemsHtml = "";
     for (const itm of ord.items) {
-      itemsHtml += `<div class="order-item-line">• ${itm.product_name} (${itm.quantity} dona)</div>`;
+      const imgUrl = getImageUrl(itm.image_file_id);
+      itemsHtml += `
+        <div class="order-product-row">
+          <img src="${imgUrl}" class="order-product-thumb" alt="${itm.product_name}" loading="lazy" />
+          <div class="order-product-meta">
+            <span class="order-product-name">${itm.product_name}</span>
+            <span class="order-product-sub">${itm.quantity} dona x ${cart.formatPrice(itm.price_at_order_time)}</span>
+          </div>
+        </div>
+      `;
     }
 
     const dateStr = new Date(ord.created_at).toLocaleDateString("uz-UZ", {
@@ -686,21 +696,45 @@ function renderOrdersFromData(orders) {
       minute: "2-digit",
     });
 
+    let deleteBtnHtml = "";
+    if (ord.status === "completed" || ord.status === "cancelled") {
+      deleteBtnHtml = `
+        <button class="btn-order-delete" onclick="deleteUserOrder(${ord.id})" title="Tarixdan o'chirish">
+          🗑 O'chirish
+        </button>
+      `;
+    }
+
     card.innerHTML = `
       <div class="order-header">
         <span class="order-id">Buyurtma #${ord.id}</span>
         <span class="order-badge ${badgeClass}">${statusText}</span>
       </div>
-      <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">${dateStr}</div>
-      <div style="margin: 6px 0;">${itemsHtml}</div>
+      <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 6px;">${dateStr}</div>
+      <div class="order-items-box">${itemsHtml}</div>
       <div class="order-total-line">
-        <span>Jami:</span>
-        <span>${cart.formatPrice(ord.total_price)}</span>
+        <span style="color:var(--text-secondary); font-size:13px;">Jami summa:</span>
+        <span style="font-weight:800; color:var(--button-color); font-size:15px;">${cart.formatPrice(ord.total_price)}</span>
       </div>
+      ${deleteBtnHtml ? `<div class="order-card-footer">${deleteBtnHtml}</div>` : ""}
     `;
     elOrdersList.appendChild(card);
   }
 }
+
+window.deleteUserOrder = async (orderId) => {
+  if (!confirm("Haqiqatan ham ushbu buyurtmani tarixingizdan o'chirmoqchimisiz?")) return;
+  try {
+    await api.deleteOrder(orderId);
+    if (_ordersCache) {
+      _ordersCache = _ordersCache.filter((o) => o.id !== orderId);
+      renderOrdersFromData(_ordersCache);
+    }
+  } catch (err) {
+    alert("Xatolik: " + err.message);
+    loadOrders(true);
+  }
+};
 
 async function loadOrders(forceRefresh = false) {
   try {
