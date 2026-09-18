@@ -114,6 +114,24 @@ async def create_product_admin(
     return result.scalar_one()
 
 
+@router.get("/{product_id}", response_model=AdminProductResponse)
+async def get_product_admin(
+    product_id: int,
+    current_admin: Admin = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: Get product details by ID."""
+    result = await db.execute(
+        select(Product)
+        .where(Product.id == product_id)
+        .options(selectinload(Product.images))
+    )
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=404, detail="Mahsulot topilmadi")
+    return product
+
+
 @router.patch("/{product_id}", response_model=AdminProductResponse)
 async def update_product_admin(
     product_id: int,

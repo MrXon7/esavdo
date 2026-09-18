@@ -82,6 +82,10 @@ export const adminApi = {
     return await request(`${API_BASE}/api/admin/products`);
   },
 
+  async getProduct(id) {
+    return await request(`${API_BASE}/api/admin/products/${id}`);
+  },
+
   async createProduct(data) {
     return await request(`${API_BASE}/api/admin/products`, {
       method: "POST",

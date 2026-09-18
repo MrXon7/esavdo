@@ -20,8 +20,7 @@ let editingProductId = null;
 let storeSettings = null;
 
 // ─── Client-side Cache ───────────────────────────────────────────────────────
-// Orders: key = status string ("" = all, "pending", etc.)
-const _ordersCache = new Map();
+let _allAdminOrders = null;     // null = not loaded yet; array of all orders
 let _productsCache = null;      // null = not loaded yet
 let _categoriesCache = null;    // null = not loaded yet
 let _imagesCache = null;        // null = not loaded yet
@@ -77,15 +76,34 @@ tabs.forEach((t) => {
 const elOrdersContainer = document.getElementById("admin-orders-list");
 const statusFilterBtns = document.querySelectorAll(".filter-btn");
 
+function filterAndRenderOrders() {
+  if (!_allAdminOrders) return;
+  let list = _allAdminOrders;
+  if (currentOrderStatusFilter) {
+    list = _allAdminOrders.filter((o) => o.status === currentOrderStatusFilter);
+  }
+  renderOrdersFromData(list);
+}
+
 statusFilterBtns.forEach((btn) => {
+  if (btn.id === "btn-refresh-orders") return;
   btn.onclick = () => {
-    statusFilterBtns.forEach((b) => b.classList.remove("active"));
+    statusFilterBtns.forEach((b) => {
+      if (b.id !== "btn-refresh-orders") b.classList.remove("active");
+    });
     btn.classList.add("active");
     currentOrderStatusFilter = btn.dataset.status || null;
-    // Force refresh when filter changes (user explicitly requested new data)
-    loadOrders(true);
+    // 0ms instant filter directly in memory — NO skeleton, NO server call!
+    filterAndRenderOrders();
   };
 });
+
+const btnRefreshOrders = document.getElementById("btn-refresh-orders");
+if (btnRefreshOrders) {
+  btnRefreshOrders.onclick = () => {
+    loadOrders(true);
+  };
+}
 
 function renderAdminOrdersSkeleton() {
   if (!elOrdersContainer) return;
@@ -198,24 +216,24 @@ function renderOrdersFromData(orders) {
 
 /**
  * Load orders with smart caching.
- * @param {boolean} forceRefresh - if true, skip cache and fetch from server
+ * Fetches all orders once, then allows instant 0ms filtering by status.
+ * @param {boolean} forceRefresh - if true, bypass cache and fetch from server
  */
 async function loadOrders(forceRefresh = false) {
   if (!elOrdersContainer) return;
-  const cacheKey = currentOrderStatusFilter || "";
 
-  // Serve from cache immediately (no skeleton, no server call)
-  if (!forceRefresh && _ordersCache.has(cacheKey)) {
-    renderOrdersFromData(_ordersCache.get(cacheKey));
+  // Serve from memory cache immediately (no skeleton, no server call)
+  if (!forceRefresh && _allAdminOrders !== null) {
+    filterAndRenderOrders();
     return;
   }
 
-  // First time or forced — show skeleton and fetch
+  // First time or forced — show skeleton and fetch from server
   try {
     renderAdminOrdersSkeleton();
-    const orders = await adminApi.getOrders(currentOrderStatusFilter);
-    _ordersCache.set(cacheKey, orders);
-    renderOrdersFromData(orders);
+    const orders = await adminApi.getOrders();
+    _allAdminOrders = orders || [];
+    filterAndRenderOrders();
   } catch (err) {
     console.error("Load orders error:", err);
     elOrdersContainer.innerHTML = `<div style="color:var(--danger-color); text-align:center; padding:20px;">Xatolik: ${err.message}</div>`;
@@ -225,12 +243,20 @@ async function loadOrders(forceRefresh = false) {
 window.updateStatus = async (orderId, newStatus) => {
   if (!confirm(`Buyurtma statusini o'zgartirishni tasdiqlaysizmi: ${newStatus}?`)) return;
   try {
+    // 1. Optimistic UI update: update local item immediately!
+    if (_allAdminOrders) {
+      const target = _allAdminOrders.find((o) => o.id === orderId);
+      if (target) {
+        target.status = newStatus;
+        filterAndRenderOrders(); // Instant UI update (0ms)!
+      }
+    }
+
+    // 2. Sync to server
     await adminApi.updateOrderStatus(orderId, newStatus);
-    // Invalidate all order caches since status change affects multiple filters
-    _ordersCache.clear();
-    loadOrders(true);
   } catch (err) {
     alert("Xatolik: " + err.message);
+    loadOrders(true); // Rollback on error
   }
 };
 
@@ -453,7 +479,12 @@ window.openEditProduct = async (productId) => {
   elProductModal.classList.add("active");
 
   try {
-    const p = await adminApi.getProduct(productId);
+    // Check in-memory cache first for 0ms instant display, or fetch from API
+    let p = _productsCache?.find((x) => x.id === productId);
+    if (!p) {
+      p = await adminApi.getProduct(productId);
+    }
+
     document.getElementById("prod-name").value = p.name;
     document.getElementById("prod-price").value = p.price;
     document.getElementById("prod-desc").value = p.description || "";
