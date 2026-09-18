@@ -27,10 +27,10 @@ function getImageUrl(fileId) {
 
 function formatPrice(amount) {
   const curr = storeSettings?.currency || "so'm";
-  return new Intl.NumberFormat("uz-UZ", { maximumFractionDigits: 0 }).format(amount) + " " + curr;
+  return new Intl.NumberFormat("uz-UZ", { maximumFractionDigits: 0 }).format(amount || 0) + " " + curr;
 }
 
-// 1. Tab Switching
+// ─── 1. Tab Switching ───────────────────────────────────────────────────────
 const tabs = document.querySelectorAll(".nav-tab");
 const sections = document.querySelectorAll(".admin-section");
 
@@ -50,7 +50,7 @@ tabs.forEach((t) => {
   t.onclick = () => switchTab(t.dataset.tab);
 });
 
-// 2. Orders Tab with Skeletons
+// ─── 2. Orders Tab ──────────────────────────────────────────────────────────
 const elOrdersContainer = document.getElementById("admin-orders-list");
 const statusFilterBtns = document.querySelectorAll(".filter-btn");
 
@@ -64,6 +64,7 @@ statusFilterBtns.forEach((btn) => {
 });
 
 function renderAdminOrdersSkeleton() {
+  if (!elOrdersContainer) return;
   elOrdersContainer.innerHTML = `
     <div class="admin-card" style="padding: 16px;">
       <div class="skeleton" style="width: 40%; height: 18px; margin-bottom: 8px;"></div>
@@ -80,15 +81,17 @@ function renderAdminOrdersSkeleton() {
 }
 
 async function loadOrders() {
+  if (!elOrdersContainer) return;
   try {
     renderAdminOrdersSkeleton();
     const orders = await adminApi.getOrders(currentOrderStatusFilter);
 
-    if (!orders.length) {
+    if (!orders || !orders.length) {
       elOrdersContainer.innerHTML = `
         <div style="text-align:center; padding:40px 16px; color:var(--text-secondary);">
-          <div style="font-size:42px; margin-bottom:8px;">📦</div>
+          <div style="font-size:46px; margin-bottom:8px;">📦</div>
           <div style="font-weight:700; font-size:15px;">Hozircha buyurtmalar yo'q</div>
+          <div style="font-size:13px; margin-top:4px;">Yangi buyurtmalar tushishi bilan shu yerda ko'rinadi</div>
         </div>
       `;
       return;
@@ -100,8 +103,8 @@ async function loadOrders() {
       card.className = "admin-card";
 
       let itemsHtml = "";
-      for (const i of ord.items) {
-        itemsHtml += `<div style="margin-bottom:2px;">• <b>${i.product_name}</b> — ${i.quantity} x ${formatPrice(i.price_at_order_time)}</div>`;
+      for (const i of ord.items || []) {
+        itemsHtml += `<div style="margin-bottom:3px;">• <b>${i.product_name}</b> — ${i.quantity} dona x ${formatPrice(i.price_at_order_time)}</div>`;
       }
 
       const dateStr = new Date(ord.created_at).toLocaleString("uz-UZ", {
@@ -112,7 +115,6 @@ async function loadOrders() {
         minute: "2-digit",
       });
 
-      // Status action buttons
       let actionBtns = "";
       if (ord.status === "pending") {
         actionBtns = `
@@ -130,7 +132,7 @@ async function loadOrders() {
         `;
       } else if (ord.status === "delivering") {
         actionBtns = `
-          <button class="btn btn-success btn-sm" onclick="updateStatus(${ord.id}, 'completed')">🎉 Yakunlandi (Topshirildi)</button>
+          <button class="btn btn-success btn-sm" onclick="updateStatus(${ord.id}, 'completed')">🎉 Topshirildi (Yakunlandi)</button>
         `;
       }
 
@@ -149,23 +151,23 @@ async function loadOrders() {
           <span style="font-weight:800; font-size:16px; color:var(--text-primary);">Buyurtma #${ord.id}</span>
           <span class="order-badge ${badgeClass}">${statusLabelMap[ord.status] || ord.status}</span>
         </div>
-        <div style="font-size:12px; color:var(--text-secondary);">${dateStr}</div>
-        <div style="font-size:13.5px; color:var(--text-primary); line-height:1.5;">
+        <div style="font-size:12px; color:var(--text-secondary); margin-bottom:8px;">${dateStr}</div>
+        <div style="font-size:13.5px; color:var(--text-primary); line-height:1.55; margin-bottom:10px;">
           <div>👤 <b>Mijoz:</b> ${ord.user ? ord.user.full_name : "Noma'lum"}</div>
           <div>📞 <b>Tel:</b> <a href="tel:${ord.phone}" style="color:var(--button-color); text-decoration:none; font-weight:700;">${ord.phone}</a></div>
           <div>📍 <b>Manzil:</b> ${ord.address}</div>
           <div>💳 <b>To'lov:</b> ${ord.payment_type === "cash" ? "Naqd pul" : "Karta"}</div>
           ${ord.notes ? `<div>📝 <b>Izoh:</b> ${ord.notes}</div>` : ""}
         </div>
-        <div style="background:var(--secondary-bg); border:1px solid var(--border-subtle); padding:10px; border-radius:8px; font-size:13px; color:var(--text-primary);">
-          <div style="font-weight:700; margin-bottom:4px;">Xarid qilingan mahsulotlar:</div>
-          ${itemsHtml}
+        <div style="background:var(--secondary-bg); border:1px solid var(--border-subtle); padding:10px; border-radius:8px; font-size:13px; color:var(--text-primary); margin-bottom:8px;">
+          <div style="font-weight:700; margin-bottom:4px;">Mahsulotlar:</div>
+          ${itemsHtml || "<div>Mahsulot ma'lumoti yo'q</div>"}
         </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px dashed var(--border-subtle); padding-top:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px dashed var(--border-subtle); padding-top:8px; margin-bottom:8px;">
           <span style="font-weight:600; color:var(--text-secondary);">Jami summa:</span>
           <span style="font-weight:800; font-size:16px; color:var(--button-color);">${formatPrice(ord.total_price)}</span>
         </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:4px;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
           ${actionBtns}
         </div>
       `;
@@ -187,7 +189,7 @@ window.updateStatus = async (orderId, newStatus) => {
   }
 };
 
-// 3. Products Tab with Skeletons
+// ─── 3. Products Tab ────────────────────────────────────────────────────────
 const elProductsContainer = document.getElementById("admin-products-list");
 const elProductModal = document.getElementById("product-modal");
 const elProductForm = document.getElementById("product-form");
@@ -195,16 +197,17 @@ const elImagePicker = document.getElementById("product-image-picker");
 const elCategorySelect = document.getElementById("product-category-select");
 
 function renderAdminProductsSkeleton() {
+  if (!elProductsContainer) return;
   elProductsContainer.innerHTML = `
     <div class="admin-card" style="display:flex; gap:12px; align-items:center; padding:12px;">
-      <div class="skeleton" style="width:54px; height:54px; border-radius:8px; flex-shrink:0;"></div>
+      <div class="skeleton" style="width:56px; height:56px; border-radius:8px; flex-shrink:0;"></div>
       <div style="flex-grow:1;">
         <div class="skeleton" style="width:60%; height:16px; margin-bottom:8px;"></div>
         <div class="skeleton" style="width:40%; height:14px;"></div>
       </div>
     </div>
     <div class="admin-card" style="display:flex; gap:12px; align-items:center; padding:12px;">
-      <div class="skeleton" style="width:54px; height:54px; border-radius:8px; flex-shrink:0;"></div>
+      <div class="skeleton" style="width:56px; height:56px; border-radius:8px; flex-shrink:0;"></div>
       <div style="flex-grow:1;">
         <div class="skeleton" style="width:50%; height:16px; margin-bottom:8px;"></div>
         <div class="skeleton" style="width:35%; height:14px;"></div>
@@ -214,14 +217,15 @@ function renderAdminProductsSkeleton() {
 }
 
 async function loadProducts() {
+  if (!elProductsContainer) return;
   try {
     renderAdminProductsSkeleton();
     const products = await adminApi.getProducts();
 
-    if (!products.length) {
+    if (!products || !products.length) {
       elProductsContainer.innerHTML = `
         <div style="text-align:center; padding:40px 16px; color:var(--text-secondary);">
-          <div style="font-size:42px; margin-bottom:8px;">🏷</div>
+          <div style="font-size:46px; margin-bottom:8px;">🏷</div>
           <div style="font-weight:700; font-size:15px;">Hozircha mahsulotlar yo'q</div>
           <div style="font-size:13px; margin-top:4px;">Yuqoridagi tugma orqali yangi mahsulot qo'shing</div>
         </div>
@@ -246,7 +250,7 @@ async function loadProducts() {
             ${p.is_active ? '● Faol' : '● Nofaol'}
           </div>
         </div>
-        <div style="display:flex; gap:6px;">
+        <div style="display:flex; gap:6px; flex-shrink:0;">
           <button class="btn btn-secondary btn-sm" onclick="openEditProduct(${p.id})">✏️</button>
           <button class="btn btn-primary btn-sm" onclick="announceToGroup(${p.id})" title="Guruhga e'lon qilish">📢</button>
           <button class="btn btn-danger btn-sm" onclick="deleteProduct(${p.id})">🗑</button>
@@ -291,21 +295,27 @@ document.getElementById("btn-add-product").onclick = () => {
   elProductModal.classList.add("active");
 };
 
-document.getElementById("btn-close-product-modal").onclick = () => {
+const closeProductModal = () => {
   elProductModal.classList.remove("active");
+};
+document.getElementById("btn-close-product-modal").onclick = closeProductModal;
+elProductModal.onclick = (e) => {
+  if (e.target === elProductModal) closeProductModal();
 };
 
 async function populateCategorySelect(selectedId = null) {
-  if (!categoriesList.length) {
+  try {
     categoriesList = await adminApi.getCategories();
-  }
-  elCategorySelect.innerHTML = `<option value="">-- Kategoriyasiz --</option>`;
-  for (const cat of categoriesList) {
-    const opt = document.createElement("option");
-    opt.value = cat.id;
-    opt.textContent = cat.name;
-    if (selectedId && cat.id === selectedId) opt.selected = true;
-    elCategorySelect.appendChild(opt);
+    elCategorySelect.innerHTML = `<option value="">-- Kategoriyasiz --</option>`;
+    for (const cat of categoriesList) {
+      const opt = document.createElement("option");
+      opt.value = cat.id;
+      opt.textContent = cat.name;
+      if (selectedId && cat.id === selectedId) opt.selected = true;
+      elCategorySelect.appendChild(opt);
+    }
+  } catch (e) {
+    console.error("Category select error:", e);
   }
 }
 
@@ -315,33 +325,41 @@ async function renderImagePicker() {
     uploadedImagesList = await adminApi.getUploadedImages(false);
     if (!uploadedImagesList.length && selectedImageFileIds.size === 0) {
       elImagePicker.innerHTML = `
-        <div style="grid-column:span 3; font-size:12.5px; color:var(--text-secondary); text-align:center; padding:12px; background:var(--secondary-bg); border-radius:8px;">
-          Ishlatilmagan rasmlar yo'q.<br/>Yangi rasm qo'shish uchun botga rasm yuboring!
+        <div style="grid-column:span 3; font-size:12px; color:var(--text-secondary); text-align:center; padding:12px; line-height:1.4;">
+          📸 Galereyada bo'sh rasmlar yo'q.<br/>Telegram botingizga rasm yuboring, u shu yerda paydo bo'ladi!
         </div>
       `;
       return;
     }
 
     elImagePicker.innerHTML = "";
-    // If editing, also show currently selected images
+
+    // Show selected images first
     for (const fileId of selectedImageFileIds) {
       const item = document.createElement("div");
-      item.className = "gallery-item selected";
-      item.innerHTML = `<img src="${getImageUrl(fileId)}" class="gallery-img">`;
+      item.className = "picker-item selected";
+      item.innerHTML = `
+        <img src="${getImageUrl(fileId)}" alt="Selected">
+        <span class="picker-check">✓</span>
+      `;
       item.onclick = () => toggleImageSelection(fileId, item);
       elImagePicker.appendChild(item);
     }
 
+    // Show unselected uploaded images
     for (const img of uploadedImagesList) {
       if (selectedImageFileIds.has(img.file_id)) continue;
       const item = document.createElement("div");
-      item.className = "gallery-item";
-      item.innerHTML = `<img src="${getImageUrl(img.file_id)}" class="gallery-img">`;
+      item.className = "picker-item";
+      item.innerHTML = `
+        <img src="${getImageUrl(img.file_id)}" alt="Photo">
+        <span class="picker-check">✓</span>
+      `;
       item.onclick = () => toggleImageSelection(img.file_id, item);
       elImagePicker.appendChild(item);
     }
   } catch (err) {
-    console.error("Image picker load error:", err);
+    console.error("Image picker error:", err);
   }
 }
 
@@ -392,7 +410,7 @@ elProductForm.onsubmit = async (e) => {
   const image_file_ids = Array.from(selectedImageFileIds);
 
   const saveBtn = e.target.querySelector('button[type="submit"]');
-  const origBtnText = saveBtn.textContent;
+  const origText = saveBtn.textContent;
   saveBtn.disabled = true;
   saveBtn.innerHTML = `<span class="spinner"></span> Saqlanmoqda...`;
 
@@ -417,30 +435,31 @@ elProductForm.onsubmit = async (e) => {
       });
     }
 
-    elProductModal.classList.remove("active");
+    closeProductModal();
     loadProducts();
   } catch (err) {
     alert("Xatolik: " + err.message);
   } finally {
     saveBtn.disabled = false;
-    saveBtn.textContent = origBtnText;
+    saveBtn.textContent = origText;
   }
 };
 
-// 4. Uploaded Images Gallery Tab
+// ─── 4. Images Gallery Tab ──────────────────────────────────────────────────
 const elGalleryContainer = document.getElementById("admin-gallery-list");
 
 async function loadImagesGallery() {
+  if (!elGalleryContainer) return;
   try {
-    elGalleryContainer.innerHTML = `<div style="grid-column:span 3; text-align:center; padding:20px; color:var(--text-secondary);">Yuklanmoqda...</div>`;
+    elGalleryContainer.innerHTML = `<div style="grid-column:span 3; text-align:center; padding:30px; color:var(--text-secondary);">Yuklanmoqda...</div>`;
     const images = await adminApi.getUploadedImages();
 
-    if (!images.length) {
+    if (!images || !images.length) {
       elGalleryContainer.innerHTML = `
         <div style="grid-column:span 3; text-align:center; padding:40px 16px; color:var(--text-secondary);">
-          <div style="font-size:42px; margin-bottom:8px;">📸</div>
+          <div style="font-size:46px; margin-bottom:8px;">📸</div>
           <div style="font-weight:700; font-size:15px;">Galereyada rasmlar yo'q</div>
-          <div style="font-size:13px; margin-top:4px;">Telegram botingizga rasm yuboring, u avtomatik shu yerda paydo bo'ladi!</div>
+          <div style="font-size:13px; margin-top:4px;">Telegram botingizga rasm yuboring, u darhol shu yerda paydo bo'ladi!</div>
         </div>
       `;
       return;
@@ -452,7 +471,7 @@ async function loadImagesGallery() {
       item.className = "gallery-item";
       item.innerHTML = `
         <img src="${getImageUrl(img.file_id)}" class="gallery-img" alt="Uploaded Image">
-        <div style="position:absolute; bottom:4px; right:4px; font-size:10px; background:rgba(0,0,0,0.6); color:white; padding:2px 6px; border-radius:4px;">
+        <div style="position:absolute; bottom:4px; right:4px; font-size:10px; font-weight:700; background:rgba(0,0,0,0.65); color:#ffffff; padding:2px 6px; border-radius:4px;">
           ${img.is_used ? "Band" : "Bo'sh"}
         </div>
       `;
@@ -463,17 +482,24 @@ async function loadImagesGallery() {
   }
 }
 
-// 5. Categories Tab
+// ─── 5. Categories Tab ──────────────────────────────────────────────────────
 const elCategoriesContainer = document.getElementById("admin-categories-list");
 const elCategoryForm = document.getElementById("category-form");
 
 async function loadCategories() {
+  if (!elCategoriesContainer) return;
   try {
     elCategoriesContainer.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-secondary);">Yuklanmoqda...</div>`;
     categoriesList = await adminApi.getCategories();
 
-    if (!categoriesList.length) {
-      elCategoriesContainer.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-secondary);">Kategoriyalar yo'q</div>`;
+    if (!categoriesList || !categoriesList.length) {
+      elCategoriesContainer.innerHTML = `
+        <div style="text-align:center; padding:24px 16px; color:var(--text-secondary);">
+          <div style="font-size:36px; margin-bottom:6px;">📂</div>
+          <div style="font-weight:700; font-size:14px;">Hozircha kategoriyalar yo'q</div>
+          <div style="font-size:12px; margin-top:2px;">Yuqoridagi forma orqali yangi kategoriya qo'shing</div>
+        </div>
+      `;
       return;
     }
 
@@ -481,14 +507,15 @@ async function loadCategories() {
     for (const cat of categoriesList) {
       const row = document.createElement("div");
       row.className = "admin-card";
-      row.style.display = "flex";
+      row.style.flexDirection = "row";
       row.style.justifyContent = "space-between";
       row.style.alignItems = "center";
-      row.style.padding = "10px 14px";
+      row.style.padding = "12px 14px";
+      row.style.marginBottom = "8px";
       row.innerHTML = `
         <div>
-          <span style="font-weight:700; color:var(--text-primary); font-size:15px;">${cat.name}</span>
-          <span style="font-size:12px; color:var(--text-secondary); margin-left:8px;">(tartib: ${cat.sort_order})</span>
+          <span style="font-weight:700; color:var(--text-primary); font-size:14.5px;">${cat.name}</span>
+          <span style="font-size:12px; color:var(--text-secondary); margin-left:6px;">(tartib: ${cat.sort_order})</span>
         </div>
         <button class="btn btn-danger btn-sm" onclick="deleteCategory(${cat.id})">🗑 O'chirish</button>
       `;
@@ -499,22 +526,33 @@ async function loadCategories() {
   }
 }
 
-elCategoryForm.onsubmit = async (e) => {
-  e.preventDefault();
-  const name = document.getElementById("cat-name").value.trim();
-  const sort_order = parseInt(document.getElementById("cat-order").value) || 0;
+if (elCategoryForm) {
+  elCategoryForm.onsubmit = async (e) => {
+    e.preventDefault();
+    const nameInput = document.getElementById("cat-name");
+    const orderInput = document.getElementById("cat-order");
+    const name = nameInput.value.trim();
+    const sort_order = parseInt(orderInput.value) || 0;
 
-  try {
-    await adminApi.createCategory({ name, sort_order });
-    elCategoryForm.reset();
-    loadCategories();
-  } catch (err) {
-    alert("Xatolik: " + err.message);
-  }
-};
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = `<span class="spinner"></span> Qo'shilmoqda...`;
+
+    try {
+      await adminApi.createCategory({ name, sort_order });
+      elCategoryForm.reset();
+      loadCategories();
+    } catch (err) {
+      alert("Xatolik: " + err.message);
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Qo'shish";
+    }
+  };
+}
 
 window.deleteCategory = async (catId) => {
-  if (!confirm("Ushbu kategoriyani o'chirmoqchimisiz?")) return;
+  if (!confirm("Haqiqatan ham ushbu kategoriyani o'chirmoqchimisiz?")) return;
   try {
     await adminApi.deleteCategory(catId);
     loadCategories();
@@ -523,54 +561,67 @@ window.deleteCategory = async (catId) => {
   }
 };
 
-// 6. Settings Tab
+// ─── 6. Settings Tab ────────────────────────────────────────────────────────
 const elSettingsForm = document.getElementById("settings-form");
 
 async function loadSettings() {
   try {
     storeSettings = await adminApi.getStoreSettings();
-    document.getElementById("setting-store-name").value = storeSettings.store_name || "";
-    document.getElementById("setting-store-desc").value = storeSettings.store_description || "";
-    document.getElementById("setting-contact-phone").value = storeSettings.contact_phone || "";
-    document.getElementById("setting-currency").value = storeSettings.currency || "so'm";
-    document.getElementById("setting-logo-id").value = storeSettings.logo_file_id || "";
+    const nameEl = document.getElementById("setting-store-name");
+    const descEl = document.getElementById("setting-store-desc");
+    const phoneEl = document.getElementById("setting-contact-phone");
+    const currEl = document.getElementById("setting-currency");
+    const logoEl = document.getElementById("setting-logo-id");
+
+    if (nameEl) nameEl.value = storeSettings.store_name || "";
+    if (descEl) descEl.value = storeSettings.store_description || "";
+    if (phoneEl) phoneEl.value = storeSettings.contact_phone || "";
+    if (currEl) currEl.value = storeSettings.currency || "so'm";
+    if (logoEl) logoEl.value = storeSettings.logo_file_id || "";
   } catch (err) {
     console.error("Load settings error:", err);
   }
 }
 
-elSettingsForm.onsubmit = async (e) => {
-  e.preventDefault();
-  const store_name = document.getElementById("setting-store-name").value.trim();
-  const store_description = document.getElementById("setting-store-desc").value.trim();
-  const contact_phone = document.getElementById("setting-contact-phone").value.trim();
-  const currency = document.getElementById("setting-currency").value.trim();
-  const logo_file_id = document.getElementById("setting-logo-id").value.trim();
+if (elSettingsForm) {
+  elSettingsForm.onsubmit = async (e) => {
+    e.preventDefault();
+    const store_name = document.getElementById("setting-store-name").value.trim();
+    const store_description = document.getElementById("setting-store-desc").value.trim();
+    const contact_phone = document.getElementById("setting-contact-phone").value.trim();
+    const currency = document.getElementById("setting-currency").value.trim();
+    const logo_file_id = document.getElementById("setting-logo-id").value.trim();
 
-  const saveBtn = e.target.querySelector('button[type="submit"]');
-  saveBtn.disabled = true;
-  saveBtn.innerHTML = `<span class="spinner"></span> Saqlanmoqda...`;
+    const saveBtn = e.target.querySelector('button[type="submit"]');
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = `<span class="spinner"></span> Saqlanmoqda...`;
 
-  try {
-    await adminApi.updateStoreSettings({
-      store_name,
-      store_description: store_description || null,
-      contact_phone: contact_phone || null,
-      currency: currency || "so'm",
-      logo_file_id: logo_file_id || null,
-    });
-    alert("🎉 Do'kon sozlamalari muvaffaqiyatli saqlandi!");
-    loadSettings();
-  } catch (err) {
-    alert("Xatolik: " + err.message);
-  } finally {
-    saveBtn.disabled = false;
-    saveBtn.textContent = "Sozlamalarni saqlash";
-  }
-};
+    try {
+      await adminApi.updateStoreSettings({
+        store_name,
+        store_description: store_description || null,
+        contact_phone: contact_phone || null,
+        currency: currency || "so'm",
+        logo_file_id: logo_file_id || null,
+      });
+      alert("🎉 Do'kon sozlamalari muvaffaqiyatli saqlandi!");
+      loadSettings();
+    } catch (err) {
+      alert("Xatolik: " + err.message);
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "💾 Sozlamalarni saqlash";
+    }
+  };
+}
 
-// Boot — Admin huquqini tekshirish
+// ─── Boot ───────────────────────────────────────────────────────────────────
 async function bootAdmin() {
+  // 1. Immediately switch to orders tab and start loading (0 delay!)
+  switchTab("orders");
+  loadSettings();
+
+  // 2. Auth check in background (doesn't freeze UI!)
   if (tg && tg.initData) {
     try {
       const meResp = await fetch("/api/store-settings/me", {
@@ -579,19 +630,17 @@ async function bootAdmin() {
           "X-Telegram-Init-Data": tg.initData,
         },
       });
-      if (!meResp.ok) throw new Error("403");
-      const me = await meResp.json();
-      if (!me.is_admin) {
-        window.location.replace("/");
-        return;
+      if (meResp.ok) {
+        const me = await meResp.json();
+        if (!me.is_admin) {
+          window.location.replace("/");
+          return;
+        }
       }
     } catch (err) {
-      console.warn("Admin tekshiruvi muvaffaqiyatsiz:", err.message);
+      console.warn("Admin check warning:", err.message);
     }
   }
-
-  loadSettings();
-  loadOrders();
 }
 
 bootAdmin();

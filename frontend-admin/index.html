@@ -8,10 +8,11 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
+  <!-- Header -->
   <header class="admin-header">
     <div class="admin-title">Boshqaruv Paneli</div>
     <div style="display: flex; align-items: center; gap: 8px;">
-      <a href="/" style="color: var(--primary-color, #2481cc); text-decoration: none; font-size: 13px; font-weight: 600; padding: 4px 10px; border: 1px solid var(--primary-color, #2481cc); border-radius: 6px;">🛍 Do'konga o'tish</a>
+      <a href="/" class="btn-store-switch">🛍 Do'kon</a>
       <span class="badge-admin">ADMIN</span>
     </div>
   </header>
@@ -42,62 +43,62 @@
   <!-- Tab 3: Uploaded Images Gallery -->
   <section id="tab-images" class="admin-section">
     <div class="info-banner">
-      💡 <b>Yangi rasm qo'shish:</b> Telegram botingizga istalgan rasm yoki fotosuratlarni yuboring. Ular bu yerda avtomatik paydo bo'ladi va mahsulotlarga biriktirishga tayyor bo'ladi.
+      💡 <b>Yangi rasm qo'shish:</b> Telegram botingizga rasm yoki fotosuratlarni yuboring. Ular bu yerda avtomatik paydo bo'ladi va mahsulotlarga biriktirishga tayyor bo'ladi.
     </div>
-    <div id="admin-images-gallery"></div>
+    <div class="admin-gallery-grid" id="admin-gallery-list"></div>
   </section>
 
   <!-- Tab 4: Categories -->
   <section id="tab-categories" class="admin-section">
-    <div class="card">
-      <div class="card-title">➕ Yangi kategoriya qo'shish</div>
-      <form id="category-add-form">
+    <div class="admin-card">
+      <div class="admin-card-title">➕ Yangi kategoriya qo'shish</div>
+      <form id="category-form">
         <div class="form-group">
           <label class="form-label">Kategoriya nomi *</label>
-          <input type="text" id="new-cat-name" class="form-input" placeholder="Masalan: Erkaklar kiyimi" required />
+          <input type="text" id="cat-name" class="form-control" placeholder="Masalan: Erkaklar kiyimi" required />
         </div>
         <div class="form-group">
-          <label class="form-label">Tartib raqami (sort order)</label>
-          <input type="number" id="new-cat-sort" class="form-input" value="0" />
+          <label class="form-label">Tartib raqami</label>
+          <input type="number" id="cat-order" class="form-control" value="0" />
         </div>
         <button type="submit" class="btn btn-primary btn-block">Qo'shish</button>
       </form>
     </div>
 
-    <div id="admin-categories-list"></div>
+    <div id="admin-categories-list" style="margin-top: 14px;"></div>
   </section>
 
   <!-- Tab 5: Store Settings (White-Label) -->
   <section id="tab-settings" class="admin-section">
-    <div class="card">
-      <div class="card-title">⚙️ Do'kon Sozlamalari (White-Label)</div>
+    <div class="admin-card">
+      <div class="admin-card-title">⚙️ Do'kon Sozlamalari</div>
       <div class="info-banner">
         Bu yerdagi o'zgarishlar Telegram bot va Mini App'da darhol aks etadi. Qayta deploy qilish shart emas!
       </div>
       <form id="settings-form">
         <div class="form-group">
           <label class="form-label">Do'kon nomi *</label>
-          <input type="text" id="setting-store-name" class="form-input" required />
+          <input type="text" id="setting-store-name" class="form-control" required />
         </div>
 
         <div class="form-group">
           <label class="form-label">Do'kon qisqa tavsifi</label>
-          <textarea id="setting-store-desc" class="form-textarea" placeholder="Eng sifatli mahsulotlar kafolati..."></textarea>
+          <textarea id="setting-store-desc" class="form-control" rows="2" placeholder="Eng sifatli mahsulotlar kafolati..."></textarea>
         </div>
 
         <div class="form-group">
           <label class="form-label">Aloqa telefon raqami</label>
-          <input type="tel" id="setting-contact-phone" class="form-input" placeholder="+998 90 000 00 00" />
+          <input type="tel" id="setting-contact-phone" class="form-control" placeholder="+998 90 000 00 00" />
         </div>
 
         <div class="form-group">
           <label class="form-label">Valyuta belgisi</label>
-          <input type="text" id="setting-currency" class="form-input" value="so'm" />
+          <input type="text" id="setting-currency" class="form-control" value="so'm" />
         </div>
 
         <div class="form-group">
           <label class="form-label">Logo Telegram File ID (ixtiyoriy)</label>
-          <input type="text" id="setting-logo-id" class="form-input" placeholder="Botga yuborilgan rasmning file_id si" />
+          <input type="text" id="setting-logo-id" class="form-control" placeholder="Botga yuborilgan rasmning file_id si" />
         </div>
 
         <button type="submit" class="btn btn-success btn-block" style="margin-top: 10px;">
@@ -131,46 +132,52 @@
     </button>
   </nav>
 
-  <!-- Product Modal -->
+  <!-- Product Modal (Properly scrollable bottom sheet) -->
   <div class="modal-overlay" id="product-modal">
-    <div class="modal-dialog">
+    <div class="modal-sheet">
+      <div class="modal-close-bar"></div>
       <div class="modal-header">
-        <h3 id="product-modal-title">Mahsulot</h3>
-        <button class="modal-close" id="btn-close-product-modal">&times;</button>
+        <h3 id="product-modal-title" style="font-size: 18px; font-weight: 800;">Mahsulot</h3>
+        <button class="modal-close-btn" id="btn-close-product-modal">&times;</button>
       </div>
 
-      <form id="product-form">
+      <form id="product-form" style="margin-top: 10px;">
         <div class="form-group">
-          <label class="form-label">Nomi *</label>
-          <input type="text" id="prod-name" class="form-input" required />
+          <label class="form-label">Mahsulot nomi *</label>
+          <input type="text" id="prod-name" class="form-control" placeholder="Masalan: Erkaklar futbolkasi" required />
         </div>
 
         <div class="form-group">
           <label class="form-label">Narxi *</label>
-          <input type="number" step="any" id="prod-price" class="form-input" required />
+          <input type="number" step="any" id="prod-price" class="form-control" placeholder="Masalan: 120000" required />
         </div>
 
         <div class="form-group">
           <label class="form-label">Kategoriya</label>
-          <select id="product-category-select" class="form-select"></select>
+          <select id="product-category-select" class="form-control form-select"></select>
         </div>
 
         <div class="form-group">
           <label class="form-label">Tavsif</label>
-          <textarea id="prod-desc" class="form-textarea" placeholder="Mahsulot haqida batafsil ma'lumot..."></textarea>
+          <textarea id="prod-desc" class="form-control" rows="3" placeholder="Mahsulot haqida batafsil ma'lumot..."></textarea>
         </div>
 
         <div class="form-group">
-          <label class="form-label">📸 Rasmlarni tanlang (Galereyadan):</label>
-          <div class="image-picker-grid" id="product-image-picker"></div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <label class="form-label" style="margin-bottom: 0;">📸 Rasmlar (Galereyadan tanlang):</label>
+            <span style="font-size: 11px; color: var(--text-secondary);">Bosib tanlang/o'chiring</span>
+          </div>
+          <div class="image-picker-scroll" id="product-image-picker"></div>
         </div>
 
-        <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
-          <input type="checkbox" id="prod-active" checked style="width:18px; height:18px;" />
-          <label for="prod-active" style="font-size: 14px; font-weight: 600;">Sotuvda faol ko'rinsin</label>
+        <div class="form-group" style="display: flex; align-items: center; gap: 10px; margin: 16px 0;">
+          <input type="checkbox" id="prod-active" checked style="width: 20px; height: 20px; accent-color: var(--button-color);" />
+          <label for="prod-active" style="font-size: 14px; font-weight: 700; cursor: pointer; color: var(--text-primary);">Sotuvda faol ko'rinsin</label>
         </div>
 
-        <button type="submit" class="btn btn-primary btn-block">Saqlash</button>
+        <button type="submit" class="btn btn-primary btn-block" style="padding: 13px; font-size: 15px; margin-top: 8px;">
+          💾 Saqlash
+        </button>
       </form>
     </div>
   </div>
