@@ -21,6 +21,11 @@ let products = [];
 let activeProductModal = null;
 let storeSettings = null;
 
+// Orders client-side cache (60 second TTL)
+let _ordersCache = null;
+let _ordersCacheTime = 0;
+const ORDERS_CACHE_TTL = 60_000; // ms
+
 // DOM Elements
 const elBrandLogo = document.getElementById("brand-logo");
 const elBrandName = document.getElementById("brand-name");
@@ -440,6 +445,8 @@ checkoutForm.onsubmit = async (e) => {
     });
 
     await cart.load();
+    // Invalidate orders cache so the new order appears immediately
+    _ordersCache = null;
     alert("🎉 Buyurtmangiz muvaffaqiyatli qabul qilindi!");
     checkoutForm.reset();
     switchView("orders");
@@ -451,68 +458,83 @@ checkoutForm.onsubmit = async (e) => {
   }
 };
 
-// ─── 8. Orders History with Skeletons ───────────────────────────────────────
-async function loadOrders() {
-  try {
-    renderOrdersSkeleton();
-    const orders = await api.getMyOrders();
-
-    if (!orders.length) {
-      elOrdersList.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">📦</div>
-          <div style="font-weight: 700; font-size: 16px; margin-bottom: 6px;">Buyurtmalar tarixi bo'sh</div>
-          <div style="font-size: 13px; color: var(--text-secondary);">
-            Hali hech qanday buyurtma bermagansiz
-          </div>
+// ─── 8. Orders History with Smart Cache (60s TTL) ───────────────────────────
+function renderOrdersFromData(orders) {
+  if (!orders.length) {
+    elOrdersList.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📦</div>
+        <div style="font-weight: 700; font-size: 16px; margin-bottom: 6px;">Buyurtmalar tarixi bo'sh</div>
+        <div style="font-size: 13px; color: var(--text-secondary);">
+          Hali hech qanday buyurtma bermagansiz
         </div>
-      `;
+      </div>
+    `;
+    return;
+  }
+
+  elOrdersList.innerHTML = "";
+  for (const ord of orders) {
+    const card = document.createElement("div");
+    card.className = "order-card";
+
+    const badgeClass = `badge-${ord.status}`;
+    const statusLabelMap = {
+      pending: "⏳ Kutilmoqda",
+      confirmed: "✅ Tasdiqlandi",
+      preparing: "👨‍🍳 Tayyorlanmoqda",
+      delivering: "🛵 Yetkazilmoqda",
+      completed: "🎉 Yakunlandi",
+      cancelled: "❌ Bekor qilindi",
+    };
+    const statusText = statusLabelMap[ord.status] || ord.status;
+
+    let itemsHtml = "";
+    for (const itm of ord.items) {
+      itemsHtml += `<div class="order-item-line">• ${itm.product_name} (${itm.quantity} dona)</div>`;
+    }
+
+    const dateStr = new Date(ord.created_at).toLocaleDateString("uz-UZ", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    card.innerHTML = `
+      <div class="order-header">
+        <span class="order-id">Buyurtma #${ord.id}</span>
+        <span class="order-badge ${badgeClass}">${statusText}</span>
+      </div>
+      <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">${dateStr}</div>
+      <div style="margin: 6px 0;">${itemsHtml}</div>
+      <div class="order-total-line">
+        <span>Jami:</span>
+        <span>${cart.formatPrice(ord.total_price)}</span>
+      </div>
+    `;
+    elOrdersList.appendChild(card);
+  }
+}
+
+async function loadOrders(forceRefresh = false) {
+  try {
+    const now = Date.now();
+    const cacheValid = _ordersCache !== null && (now - _ordersCacheTime) < ORDERS_CACHE_TTL;
+
+    // Serve instantly from cache (no skeleton)
+    if (!forceRefresh && cacheValid) {
+      renderOrdersFromData(_ordersCache);
       return;
     }
 
-    elOrdersList.innerHTML = "";
-    for (const ord of orders) {
-      const card = document.createElement("div");
-      card.className = "order-card";
-
-      const badgeClass = `badge-${ord.status}`;
-      const statusLabelMap = {
-        pending: "⏳ Kutilmoqda",
-        confirmed: "✅ Tasdiqlandi",
-        preparing: "👨‍🍳 Tayyorlanmoqda",
-        delivering: "🛵 Yetkazilmoqda",
-        completed: "🎉 Yakunlandi",
-        cancelled: "❌ Bekor qilindi",
-      };
-      const statusText = statusLabelMap[ord.status] || ord.status;
-
-      let itemsHtml = "";
-      for (const itm of ord.items) {
-        itemsHtml += `<div class="order-item-line">• ${itm.product_name} (${itm.quantity} dona)</div>`;
-      }
-
-      const dateStr = new Date(ord.created_at).toLocaleDateString("uz-UZ", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-
-      card.innerHTML = `
-        <div class="order-header">
-          <span class="order-id">Buyurtma #${ord.id}</span>
-          <span class="order-badge ${badgeClass}">${statusText}</span>
-        </div>
-        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">${dateStr}</div>
-        <div style="margin: 6px 0;">${itemsHtml}</div>
-        <div class="order-total-line">
-          <span>Jami:</span>
-          <span>${cart.formatPrice(ord.total_price)}</span>
-        </div>
-      `;
-      elOrdersList.appendChild(card);
-    }
+    // First load or expired cache — show skeleton
+    renderOrdersSkeleton();
+    const orders = await api.getMyOrders();
+    _ordersCache = orders;
+    _ordersCacheTime = Date.now();
+    renderOrdersFromData(orders);
   } catch (err) {
     console.error("Orders load error:", err);
     elOrdersList.innerHTML = `<div class="empty-state">Buyurtmalarni yuklab bo'lmadi</div>`;
