@@ -57,6 +57,41 @@ function getImageUrl(fileId) {
   return `/images/${fileId}`;
 }
 
+// ─── Instant Feedback Helpers ──────────────────────────────────────────────
+let toastTimer = null;
+function showToast(message, icon = "🛒") {
+  let toast = document.getElementById("app-toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "app-toast";
+    toast.className = "app-toast";
+    document.body.appendChild(toast);
+  }
+  toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+  toast.classList.add("show");
+
+  triggerHaptic("success");
+
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.classList.remove("show");
+  }, 1600);
+}
+
+function triggerHaptic(type = "light") {
+  if (tg && tg.HapticFeedback) {
+    try {
+      if (type === "success") {
+        tg.HapticFeedback.notificationOccurred("success");
+      } else if (type === "medium") {
+        tg.HapticFeedback.impactOccurred("medium");
+      } else {
+        tg.HapticFeedback.impactOccurred("light");
+      }
+    } catch (e) {}
+  }
+}
+
 // ─── Skeleton Loaders ───────────────────────────────────────────────────────
 function renderCategoriesSkeleton() {
   elCategories.innerHTML = `
@@ -207,29 +242,10 @@ function renderProducts() {
   for (const p of products) {
     const card = document.createElement("div");
     card.className = "product-card";
+    card.dataset.cardProdid = p.id;
 
     const firstImage = p.images && p.images.length > 0 ? p.images[0].file_id : null;
     const imgUrl = getImageUrl(firstImage);
-
-    const qtyInCart = cart.getItemQuantity(p.id);
-    const cartItemId = cart.getCartItemId(p.id);
-
-    let actionBtnHtml = "";
-    if (qtyInCart > 0) {
-      actionBtnHtml = `
-        <div class="qty-counter" onclick="event.stopPropagation()">
-          <button class="qty-btn btn-dec" data-itemid="${cartItemId}" data-prodid="${p.id}" data-qty="${qtyInCart - 1}">−</button>
-          <span class="qty-val">${qtyInCart}</span>
-          <button class="qty-btn btn-inc" data-itemid="${cartItemId}" data-prodid="${p.id}" data-qty="${qtyInCart + 1}">+</button>
-        </div>
-      `;
-    } else {
-      actionBtnHtml = `
-        <button class="btn-add-cart btn-add" data-prodid="${p.id}" onclick="event.stopPropagation()">
-          🛒 Savatga
-        </button>
-      `;
-    }
 
     card.innerHTML = `
       <div class="product-thumb-wrapper">
@@ -238,44 +254,77 @@ function renderProducts() {
       <div class="product-details">
         <div class="product-title">${p.name}</div>
         <div class="product-price">${cart.formatPrice(p.price)}</div>
-        ${actionBtnHtml}
+        <div class="card-action-box" data-action-prodid="${p.id}"></div>
       </div>
     `;
 
     card.onclick = () => openProductModal(p);
     elProductsGrid.appendChild(card);
+
+    // Initial render of this card's action button
+    updateCardActionUI(p.id);
   }
+}
 
-  // 0ms Optimistic Button Handlers
-  elProductsGrid.querySelectorAll(".btn-add").forEach((btn) => {
-    btn.onclick = async (e) => {
-      e.stopPropagation();
-      const prodId = parseInt(btn.dataset.prodid);
-      const prodObj = allProducts.find((x) => x.id === prodId);
-      await cart.add(prodId, 1, prodObj);
-      renderProducts();
-    };
-  });
+/**
+ * In-place update of a single product card's action button.
+ * NEVER destroys or re-renders the rest of the 50 product cards! (0ms)
+ */
+function updateCardActionUI(productId) {
+  const box = document.querySelector(`[data-action-prodid="${productId}"]`);
+  if (!box) return;
 
-  elProductsGrid.querySelectorAll(".btn-dec").forEach((btn) => {
-    btn.onclick = async (e) => {
-      e.stopPropagation();
-      const itemId = btn.dataset.itemid;
-      const newQty = parseInt(btn.dataset.qty);
-      await cart.updateQuantity(itemId, newQty);
-      renderProducts();
-    };
-  });
+  const prod = allProducts.find((x) => x.id === Number(productId));
+  const qtyInCart = cart.getItemQuantity(productId);
 
-  elProductsGrid.querySelectorAll(".btn-inc").forEach((btn) => {
-    btn.onclick = async (e) => {
+  if (qtyInCart > 0) {
+    box.innerHTML = `
+      <div class="qty-counter" onclick="event.stopPropagation()">
+        <button class="qty-btn btn-dec" data-prodid="${productId}">−</button>
+        <span class="qty-val">${qtyInCart}</span>
+        <button class="qty-btn btn-inc" data-prodid="${productId}">+</button>
+      </div>
+    `;
+
+    box.querySelector(".btn-dec").onclick = (e) => {
       e.stopPropagation();
-      const itemId = btn.dataset.itemid;
-      const newQty = parseInt(btn.dataset.qty);
-      await cart.updateQuantity(itemId, newQty);
-      renderProducts();
+      const currentQty = cart.getItemQuantity(productId);
+      const newQty = Math.max(0, currentQty - 1);
+      triggerHaptic("light");
+      cart.setQuantity(productId, newQty);
+      updateCardActionUI(productId);
     };
-  });
+
+    box.querySelector(".btn-inc").onclick = (e) => {
+      e.stopPropagation();
+      const currentQty = cart.getItemQuantity(productId);
+      const newQty = currentQty + 1;
+      triggerHaptic("light");
+      cart.setQuantity(productId, newQty);
+      updateCardActionUI(productId);
+    };
+  } else {
+    box.innerHTML = `
+      <button class="btn-add-cart btn-add" data-prodid="${productId}" onclick="event.stopPropagation()">
+        🛒 Savatga
+      </button>
+    `;
+
+    const btn = box.querySelector(".btn-add");
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      btn.textContent = "✓ Qo'shildi";
+      btn.classList.add("added");
+      btn.disabled = true;
+
+      showToast(prod ? `${prod.name} savatga qo'shildi` : "Mahsulot savatga qo'shildi");
+      cart.add(productId, 1, prod);
+
+      setTimeout(() => {
+        updateCardActionUI(productId);
+      }, 350);
+    };
+  }
 }
 
 // ─── 4. Product Modal ───────────────────────────────────────────────────────
@@ -286,6 +335,10 @@ function openProductModal(prod) {
   elModalTitle.textContent = prod.name;
   elModalPrice.textContent = cart.formatPrice(prod.price);
   elModalDesc.textContent = prod.description || "Ushbu mahsulot uchun batafsil tavsif kiritilmagan.";
+
+  elModalAddBtn.textContent = "🛒 Savatga qo'shish";
+  elModalAddBtn.classList.remove("added");
+  elModalAddBtn.disabled = false;
 
   elProductModal.classList.add("active");
   if (tg) tg.BackButton.show();
@@ -303,11 +356,20 @@ elProductModal.onclick = (e) => {
   if (e.target === elProductModal) closeProductModal();
 };
 
-elModalAddBtn.onclick = async () => {
+elModalAddBtn.onclick = () => {
   if (activeProductModal) {
-    await cart.add(activeProductModal.id, 1, activeProductModal);
-    closeProductModal();
-    renderProducts();
+    const prod = activeProductModal;
+    elModalAddBtn.textContent = "✓ Savatga qo'shildi!";
+    elModalAddBtn.classList.add("added");
+    elModalAddBtn.disabled = true;
+
+    showToast(`${prod.name} savatga qo'shildi`);
+    cart.add(prod.id, 1, prod);
+    updateCardActionUI(prod.id);
+
+    setTimeout(() => {
+      closeProductModal();
+    }, 400);
   }
 };
 
@@ -344,6 +406,7 @@ function renderCart() {
 
     const row = document.createElement("div");
     row.className = "cart-item";
+    row.dataset.cartProdid = item.product_id;
     row.innerHTML = `
       <img src="${getImageUrl(firstImg)}" class="cart-item-img" alt="${prod.name}">
       <div class="cart-item-info">
@@ -351,9 +414,9 @@ function renderCart() {
         <div class="cart-item-price">${cart.formatPrice(prod.price)}</div>
       </div>
       <div class="qty-counter">
-        <button class="qty-btn cart-dec" data-id="${item.id}" data-qty="${item.quantity - 1}">−</button>
-        <span class="qty-val">${item.quantity}</span>
-        <button class="qty-btn cart-inc" data-id="${item.id}" data-qty="${item.quantity + 1}">+</button>
+        <button class="qty-btn cart-dec" data-prodid="${item.product_id}">−</button>
+        <span class="qty-val" data-qtyval-prodid="${item.product_id}">${item.quantity}</span>
+        <button class="qty-btn cart-inc" data-prodid="${item.product_id}">+</button>
       </div>
     `;
     elCartItemsList.appendChild(row);
@@ -361,20 +424,50 @@ function renderCart() {
 
   elCartTotalPrice.textContent = cart.formatPrice(cart.getTotalPrice());
 
-  // 0ms Optimistic Handlers inside Cart
+  // Instant in-place handlers for Cart view
   elCartItemsList.querySelectorAll(".cart-dec").forEach((btn) => {
-    btn.onclick = async () => {
-      await cart.updateQuantity(btn.dataset.id, parseInt(btn.dataset.qty));
-      renderCart();
-      renderProducts();
+    btn.onclick = () => {
+      const pId = Number(btn.dataset.prodid);
+      const currentQty = cart.getItemQuantity(pId);
+      const newQty = currentQty - 1;
+      triggerHaptic("light");
+
+      if (newQty <= 0) {
+        // Animate removal and remove element from DOM
+        const row = document.querySelector(`.cart-item[data-cart-prodid="${pId}"]`);
+        if (row) {
+          row.style.transition = "opacity 0.2s ease, transform 0.2s ease";
+          row.style.opacity = "0";
+          row.style.transform = "translateX(20px)";
+          setTimeout(() => {
+            row.remove();
+            if (cart.items.length === 0) {
+              renderCart();
+            }
+          }, 200);
+        }
+        cart.setQuantity(pId, 0);
+      } else {
+        cart.setQuantity(pId, newQty);
+        const valEl = document.querySelector(`[data-qtyval-prodid="${pId}"]`);
+        if (valEl) valEl.textContent = newQty;
+      }
+
+      elCartTotalPrice.textContent = cart.formatPrice(cart.getTotalPrice());
     };
   });
 
   elCartItemsList.querySelectorAll(".cart-inc").forEach((btn) => {
-    btn.onclick = async () => {
-      await cart.updateQuantity(btn.dataset.id, parseInt(btn.dataset.qty));
-      renderCart();
-      renderProducts();
+    btn.onclick = () => {
+      const pId = Number(btn.dataset.prodid);
+      const currentQty = cart.getItemQuantity(pId);
+      const newQty = currentQty + 1;
+      triggerHaptic("light");
+
+      cart.setQuantity(pId, newQty);
+      const valEl = document.querySelector(`[data-qtyval-prodid="${pId}"]`);
+      if (valEl) valEl.textContent = newQty;
+      elCartTotalPrice.textContent = cart.formatPrice(cart.getTotalPrice());
     };
   });
 }
@@ -551,6 +644,9 @@ cart.subscribe((items, totalCount, totalPrice) => {
   if (totalCount > 0) {
     elCartCountBadge.textContent = totalCount;
     elCartCountBadge.style.display = "flex";
+    elCartCountBadge.classList.remove("badge-pop");
+    void elCartCountBadge.offsetWidth; // Force CSS reflow to trigger keyframe
+    elCartCountBadge.classList.add("badge-pop");
   } else {
     elCartCountBadge.style.display = "none";
   }

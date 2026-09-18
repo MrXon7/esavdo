@@ -144,6 +144,43 @@ async def update_cart_item(
     return {"status": "updated", "id": item_id, "quantity": cart_item.quantity}
 
 
+@router.put("/by-product/{product_id}")
+async def set_cart_item_by_product(
+    product_id: int,
+    req: UpdateCartItemRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set absolute quantity of a product in user's cart by product_id. If quantity <= 0, deletes it."""
+    c_res = await db.execute(
+        select(CartItem).where(
+            CartItem.product_id == product_id,
+            CartItem.user_id == current_user.id
+        )
+    )
+    cart_item = c_res.scalar_one_or_none()
+
+    if req.quantity <= 0:
+        if cart_item:
+            await db.delete(cart_item)
+            await db.commit()
+        return {"status": "deleted", "product_id": product_id}
+
+    if cart_item:
+        cart_item.quantity = req.quantity
+    else:
+        p_res = await db.execute(select(Product).where(Product.id == product_id, Product.is_active == True))
+        product = p_res.scalar_one_or_none()
+        if not product:
+            raise HTTPException(status_code=404, detail="Mahsulot topilmadi yoki faol emas")
+        cart_item = CartItem(user_id=current_user.id, product_id=product_id, quantity=req.quantity)
+        db.add(cart_item)
+
+    await db.commit()
+    await db.refresh(cart_item)
+    return {"status": "updated", "id": cart_item.id, "product_id": product_id, "quantity": cart_item.quantity}
+
+
 @router.delete("/{item_id}")
 async def remove_from_cart(
     item_id: int,

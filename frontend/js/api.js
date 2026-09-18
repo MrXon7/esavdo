@@ -85,6 +85,13 @@ export const api = {
     });
   },
 
+  async setCartQuantityByProduct(productId, quantity) {
+    return await request(`${API_BASE}/api/cart/by-product/${productId}`, {
+      method: "PUT",
+      body: JSON.stringify({ quantity }),
+    });
+  },
+
   async removeCartItem(itemId) {
     return await request(`${API_BASE}/api/cart/${itemId}`, {
       method: "DELETE",

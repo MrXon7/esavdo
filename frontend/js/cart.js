@@ -5,6 +5,8 @@ class CartStore {
     this.items = [];
     this.currency = "so'm";
     this.listeners = [];
+    // Debounce timers per product_id: productId -> timer
+    this._syncTimers = new Map();
   }
 
   setCurrency(curr) {
@@ -17,11 +19,13 @@ class CartStore {
   }
 
   notify() {
+    const totalCount = this.getTotalCount();
+    const totalPrice = this.getTotalPrice();
     for (const cb of this.listeners) {
       try {
-        cb(this.items, this.getTotalCount(), this.getTotalPrice());
+        cb(this.items, totalCount, totalPrice);
       } catch (e) {
-        console.error("Listener error:", e);
+        console.error("Cart listener error:", e);
       }
     }
   }
@@ -47,94 +51,128 @@ class CartStore {
   }
 
   getItemQuantity(productId) {
-    const found = this.items.find((i) => i.product_id === productId);
+    const pId = Number(productId);
+    const found = this.items.find((i) => Number(i.product_id) === pId);
     return found ? found.quantity : 0;
   }
 
   getCartItemId(productId) {
-    const found = this.items.find((i) => i.product_id === productId);
+    const pId = Number(productId);
+    const found = this.items.find((i) => Number(i.product_id) === pId);
     return found ? found.id : null;
   }
 
   /**
-   * Optimistic Add to Cart — Instant UI update (0ms), background API sync
+   * Optimistic Add or Increment
+   * - 0ms synchronous local state update + notify
+   * - Debounced background sync by product_id (guaranteed reliable, no temp ID bugs)
    */
-  async add(productId, quantity = 1, productObj = null) {
-    const existing = this.items.find((i) => i.product_id === productId);
-    if (existing) {
-      existing.quantity += quantity;
+  add(productId, quantity = 1, productObj = null) {
+    const pId = Number(productId);
+    let item = this.items.find((i) => Number(i.product_id) === pId);
+
+    if (item) {
+      item.quantity += quantity;
     } else {
-      this.items.push({
-        id: `temp_${Date.now()}`,
-        product_id: productId,
+      item = {
+        id: `local_${pId}`,
+        product_id: pId,
         quantity: quantity,
-        product: productObj || { id: productId, price: 0, name: "Mahsulot" },
-      });
+        product: productObj || { id: pId, price: 0, name: "Mahsulot" },
+      };
+      this.items.push(item);
     }
-    // Instant UI feedback
+
+    // Instant local UI notification
     this.notify();
 
-    // Background sync
-    try {
-      await api.addToCart(productId, quantity);
-      await this.load();
-    } catch (err) {
-      console.error("Optimistic add error:", err);
-      await this.load(); // Rollback on error
-    }
+    // Trigger debounced server sync
+    this._scheduleSync(pId, item.quantity);
   }
 
   /**
-   * Optimistic Update Quantity — Instant UI update (0ms), background API sync
+   * Optimistic Direct Quantity Set
+   * - 0ms synchronous local update + notify
    */
-  async updateQuantity(cartItemId, newQty) {
-    const idx = this.items.findIndex((i) => i.id === cartItemId);
-    if (idx !== -1) {
-      if (newQty <= 0) {
+  setQuantity(productId, newQty) {
+    const pId = Number(productId);
+    const targetQty = Math.max(0, parseInt(newQty) || 0);
+    const idx = this.items.findIndex((i) => Number(i.product_id) === pId);
+
+    if (targetQty <= 0) {
+      if (idx !== -1) {
         this.items.splice(idx, 1);
-      } else {
-        this.items[idx].quantity = newQty;
       }
-      // Instant UI feedback
-      this.notify();
+    } else {
+      if (idx !== -1) {
+        this.items[idx].quantity = targetQty;
+      }
     }
 
-    // Background sync
-    try {
-      if (newQty <= 0) {
-        await api.removeCartItem(cartItemId);
-      } else {
-        await api.updateCartItem(cartItemId, newQty);
-      }
-      await this.load();
-    } catch (err) {
-      console.error("Optimistic update error:", err);
-      await this.load(); // Rollback on error
+    // Instant local UI notification
+    this.notify();
+
+    // Trigger debounced server sync
+    this._scheduleSync(pId, targetQty);
+  }
+
+  /**
+   * Compatibility wrapper for updateQuantity(cartItemId, newQty)
+   */
+  updateQuantity(cartItemId, newQty) {
+    const item = this.items.find(
+      (i) => i.id === cartItemId || String(i.id) === String(cartItemId)
+    );
+    if (item) {
+      this.setQuantity(item.product_id, newQty);
     }
   }
 
   /**
-   * Optimistic Remove Item — Instant UI update (0ms)
+   * Remove item from cart completely
    */
-  async remove(cartItemId) {
-    const idx = this.items.findIndex((i) => i.id === cartItemId);
-    if (idx !== -1) {
-      this.items.splice(idx, 1);
-      this.notify();
+  remove(cartItemId) {
+    const item = this.items.find(
+      (i) => i.id === cartItemId || String(i.id) === String(cartItemId)
+    );
+    if (item) {
+      this.setQuantity(item.product_id, 0);
+    }
+  }
+
+  /**
+   * Debounced background sync:
+   * Aggregates rapid taps into a single network call after 300ms of user inactivity.
+   */
+  _scheduleSync(productId, quantity) {
+    if (this._syncTimers.has(productId)) {
+      clearTimeout(this._syncTimers.get(productId));
     }
 
-    try {
-      await api.removeCartItem(cartItemId);
-      await this.load();
-    } catch (err) {
-      console.error("Optimistic remove error:", err);
-      await this.load();
-    }
+    const timer = setTimeout(async () => {
+      this._syncTimers.delete(productId);
+      try {
+        const res = await api.setCartQuantityByProduct(productId, quantity);
+        // Sync the real DB item ID if it was local
+        if (res && res.id) {
+          const item = this.items.find((i) => Number(i.product_id) === productId);
+          if (item) item.id = res.id;
+        }
+      } catch (err) {
+        console.error("Cart sync error:", err);
+        // Rollback from server on hard failure
+        await this.load();
+      }
+    }, 300);
+
+    this._syncTimers.set(productId, timer);
   }
 
   formatPrice(amount) {
     return (
-      new Intl.NumberFormat("uz-UZ", { maximumFractionDigits: 0 }).format(amount || 0) +
+      new Intl.NumberFormat("uz-UZ", { maximumFractionDigits: 0 }).format(
+        amount || 0
+      ) +
       " " +
       this.currency
     );
