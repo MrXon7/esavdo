@@ -1,40 +1,59 @@
 from aiogram import Router, types
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
 from core.config import settings
+from core.cache import get_cached_admin_ids
 
 router = Router(name="start_router")
+
+
+def _get_base_url() -> str:
+    base_url = settings.RENDER_EXTERNAL_URL.rstrip("/")
+    if not base_url and settings.WEBHOOK_URL:
+        base_url = settings.WEBHOOK_URL.replace("/telegram-webhook", "").rstrip("/")
+    return base_url if base_url else "https://example.com"
 
 
 @router.message(CommandStart())
 async def cmd_start(message: types.Message):
     """
     Super-tezkor /start handleri:
-    Hech qanday database so'rovlari yo'q!
-    Faqat salomlashish xabari va Mini App ochuvchi tugmani darhol qaytaradi.
-    Foydalanuvchi Mini App'ga kirgach, tizim uning huquqiga qarab ishlaydi.
+    - Xotiradagi keshdan admin ekanligini 0ms da tekshiradi (DB so'rovsiz!).
+    - Agar admin bo'lsa, 'Admin Panel' tugmasini ham chiqaradi.
     """
+    user_id = message.from_user.id
     first_name = message.from_user.first_name or "Mijoz"
     store_name = settings.STORE_NAME
     store_desc = settings.STORE_DESCRIPTION
 
-    base_url = settings.RENDER_EXTERNAL_URL.rstrip("/")
-    if not base_url and settings.WEBHOOK_URL:
-        base_url = settings.WEBHOOK_URL.replace("/telegram-webhook", "").rstrip("/")
+    base_url = _get_base_url()
+    app_url = f"{base_url}/"
+    admin_app_url = f"{base_url}/admin/"
 
-    app_url = f"{base_url}/" if base_url else "https://example.com"
+    # Zero-DB check: in-memory RAM cache check (0.0001ms)
+    admin_ids = get_cached_admin_ids() or set()
+    is_admin = user_id in admin_ids
 
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=f"🛍 {store_name} — Do'konga kirish",
-                    web_app=WebAppInfo(url=app_url),
-                )
-            ]
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text=f"🛍 {store_name} — Do'konga kirish",
+                web_app=WebAppInfo(url=app_url),
+            )
         ]
-    )
+    ]
+
+    # Agar admin bo'lsa, Admin Panel tugmasini qo'shamiz
+    if is_admin:
+        buttons.append([
+            InlineKeyboardButton(
+                text="⚙️ Admin Panelini ochish",
+                web_app=WebAppInfo(url=admin_app_url),
+            )
+        ])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
 
     welcome_text = (
         f"Assalomu alaykum, <b>{first_name}</b>!\n\n"
@@ -42,6 +61,39 @@ async def cmd_start(message: types.Message):
     )
     if store_desc:
         welcome_text += f"<i>{store_desc}</i>\n\n"
-    welcome_text += "Do'konimiz katalogini ko'rish va xarid qilish uchun pastdagi tugmani bosing 👇"
+
+    if is_admin:
+        welcome_text += "👑 <b>Siz admin huquqiga egasiz!</b>\nAdmin panel orqali mahsulotlar va buyurtmalarni boshqarishingiz mumkin 👇"
+    else:
+        welcome_text += "Do'konimiz katalogini ko'rish va xarid qilish uchun pastdagi tugmani bosing 👇"
 
     await message.answer(welcome_text, reply_markup=keyboard)
+
+
+@router.message(Command("admin"))
+async def cmd_admin(message: types.Message):
+    """
+    /admin buyrug'i orqali to'g'ridan-to'g'ri Admin Panelini ochish.
+    """
+    user_id = message.from_user.id
+    admin_ids = get_cached_admin_ids() or set()
+    is_admin = user_id in admin_ids
+
+    if not is_admin:
+        await message.answer("❌ Kechirasiz, sizda admin huquqi yo'q.")
+        return
+
+    base_url = _get_base_url()
+    admin_app_url = f"{base_url}/admin/"
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⚙️ Boshqaruv Panelini ochish",
+                    web_app=WebAppInfo(url=admin_app_url),
+                )
+            ]
+        ]
+    )
+    await message.answer("👑 <b>Admin Paneli</b>\nQuyidagi tugma orqali boshqaruv paneliga kiring:", reply_markup=keyboard)

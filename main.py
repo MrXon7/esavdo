@@ -69,18 +69,29 @@ async def lifespan(app: FastAPI):
     register_all_handlers(dp)
     logger.info("Aiogram routerlari ro'yxatdan o'tkazildi.")
 
-    # 2. Ensure database tables and default store_settings exist
+    # 2. Ensure database tables exist and sync admin from env
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         async with AsyncSessionLocal() as session:
-            # Warm up admin IDs cache
             from core.cache import set_cached_admin_ids
             from models.admin import Admin as AdminModel
             from sqlalchemy import select as sa_select
+
+            # Sync ADMIN_TELEGRAM_ID from env → DB (insert if not exists)
+            if settings.ADMIN_TELEGRAM_ID and settings.ADMIN_TELEGRAM_ID != 0:
+                existing = await session.execute(
+                    sa_select(AdminModel).where(AdminModel.telegram_id == settings.ADMIN_TELEGRAM_ID)
+                )
+                if not existing.scalar_one_or_none():
+                    session.add(AdminModel(telegram_id=settings.ADMIN_TELEGRAM_ID))
+                    await session.commit()
+                    logger.info(f"Admin {settings.ADMIN_TELEGRAM_ID} bazaga sinxronlandi.")
+
+            # Load all admin IDs into RAM cache
             admin_res = await session.execute(sa_select(AdminModel.telegram_id))
             set_cached_admin_ids(set(row[0] for row in admin_res.fetchall()))
-            logger.info("Ma'lumotlar bazasi va adminlar ro'yxati tekshirildi.")
+            logger.info("Adminlar ro'yxati xotiraga yuklandi.")
     except Exception as e:
         logger.error(f"Bazani initsializatsiya qilishda xatolik: {e}")
 

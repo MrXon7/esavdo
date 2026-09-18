@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/esavdo"
     WEBHOOK_URL: str = ""
     WEBHOOK_PATH: str = "/telegram-webhook"
+    # Asosiy admin Telegram ID — .env da o'zgartiriladi, ilovani restart qilganda bazaga sinxronlanadi
+    ADMIN_TELEGRAM_ID: int = 0
     ADMIN_GROUP_ID: int | None = None
     PRODUCT_ANNOUNCE_GROUP_ID: int | None = None
     RENDER_EXTERNAL_URL: str = ""

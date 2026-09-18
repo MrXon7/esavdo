@@ -490,6 +490,33 @@ elSettingsForm.onsubmit = async (e) => {
   }
 };
 
-// Boot
-loadSettings();
-loadOrders();
+// Boot — Admin huquqini tekshirish
+const tg = window.Telegram?.WebApp;
+async function bootAdmin() {
+  // Agar Telegram WebApp orqali kirmagan bo'lsa (to'g'ridan-to'g'ri brauzerda) — davom et
+  if (tg && tg.initData) {
+    try {
+      const meResp = await fetch("/api/store-settings/me", {
+        headers: {
+          "Content-Type": "application/json",
+          "X-Telegram-Init-Data": tg.initData,
+        },
+      });
+      if (!meResp.ok) throw new Error("403");
+      const me = await meResp.json();
+      if (!me.is_admin) {
+        // Admin emas — mijozlar sahifasiga qaytarish
+        window.location.replace("/");
+        return;
+      }
+    } catch (err) {
+      // initData noto'g'ri yoki muammo — quyi darajada xatolik
+      console.warn("Admin tekshiruvi muvaffaqiyatsiz:", err.message);
+    }
+  }
+
+  loadSettings();
+  loadOrders();
+}
+
+bootAdmin();

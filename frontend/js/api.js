@@ -45,6 +45,10 @@ export const api = {
     return await request(`${API_BASE}/api/store-settings`);
   },
 
+  async getMe() {
+    return await request(`${API_BASE}/api/store-settings/me`);
+  },
+
   // Categories
   async getCategories() {
     return await request(`${API_BASE}/api/categories`);

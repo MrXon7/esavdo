@@ -466,6 +466,21 @@ if (tg) {
 
 // Initial Boot
 async function startApp() {
+  // Check if current user is admin — redirect to admin panel if so
+  if (tg && tg.initData) {
+    try {
+      const me = await api.getMe();
+      if (me && me.is_admin === true) {
+        // Admin — yo'naltirish
+        window.location.replace("/admin/");
+        return;
+      }
+    } catch (err) {
+      // Admin emas yoki autentifikatsiya yo'q — odatdagi do'kon sifatida davom et
+      console.log("Oddiy foydalanuvchi:", err.message);
+    }
+  }
+
   await initStore();
   await loadCategories();
   await cart.load();
