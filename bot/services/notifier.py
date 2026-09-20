@@ -151,7 +151,7 @@ async def announce_product_to_group(product_id: int, db: AsyncSession) -> bool:
                     [
                         InlineKeyboardButton(
                             text="🛍 Buyurtma berish",
-                            url=f"https://t.me/{me.username}",
+                            url=f"https://t.me/{me.username}?startapp=prod_{product.id}",
                         )
                     ]
                 ]

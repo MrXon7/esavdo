@@ -790,6 +790,48 @@ if (tg) {
   });
 }
 
+// ─── 11. Deep-Link Handler (Direct Product Modal on Click) ─────────────────
+async function checkDeepLinkProduct() {
+  let targetId = null;
+
+  // 1. Telegram start_param (from https://t.me/bot?startapp=prod_123)
+  const startParam = tg?.initDataUnsafe?.start_param;
+  if (startParam) {
+    const match = String(startParam).match(/(?:prod_)?(\d+)/);
+    if (match) targetId = Number(match[1]);
+  }
+
+  // 2. URL search parameters (?product_id=123 or ?tgWebAppStartParam=prod_123)
+  if (!targetId) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const pId = urlParams.get("product_id");
+    const tgStart = urlParams.get("tgWebAppStartParam");
+    if (pId) {
+      targetId = Number(pId);
+    } else if (tgStart) {
+      const match = String(tgStart).match(/(?:prod_)?(\d+)/);
+      if (match) targetId = Number(match[1]);
+    }
+  }
+
+  if (!targetId) return;
+
+  // 3. Find product in catalog or fetch directly from API
+  let prod = allProducts.find((p) => p.id === targetId);
+  if (!prod) {
+    try {
+      prod = await api.getProduct(targetId);
+    } catch (err) {
+      console.warn("Deep-link product not found:", err);
+    }
+  }
+
+  if (prod) {
+    switchView("catalog");
+    openProductModal(prod);
+  }
+}
+
 // ─── Initial Boot ───────────────────────────────────────────────────────────
 async function startApp() {
   // Check if current user is admin — show Admin Switch button in header
@@ -807,6 +849,9 @@ async function startApp() {
 
   // Parallel loading for maximum speed
   await Promise.all([initStore(), loadCategories(), cart.load(), loadProducts()]);
+
+  // Deep-link auto-open if specific product was requested
+  await checkDeepLinkProduct();
 }
 
 startApp();

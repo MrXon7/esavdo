@@ -1,5 +1,6 @@
+import re
 from aiogram import Router, types
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import CommandStart, Command, CommandObject
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
 from core.config import settings
@@ -14,9 +15,10 @@ def _get_base_url() -> str:
 
 
 @router.message(CommandStart())
-async def cmd_start(message: types.Message):
+async def cmd_start(message: types.Message, command: CommandObject = None):
     """
     Super-tezkor /start handleri:
+    - Mahsulot deep-link bilan kelingan bo'lsa, to'g'ridan-to'g'ri o'sha mahsulot sahifasini ochish tugmasini beradi.
     - Xotiradagi keshdan admin ekanligini 0ms da tekshiradi (DB so'rovsiz!).
     - Agar admin bo'lsa, 'Admin Panel' tugmasini ham chiqaradi.
     """
@@ -31,6 +33,47 @@ async def cmd_start(message: types.Message):
 
     # Zero-DB check: in-memory check (0.0001ms)
     is_admin = is_admin_id(user_id)
+
+    # Check for deep-linked product (e.g. /start prod_12 or /start 12)
+    product_id = None
+    if command and command.args:
+        match = re.search(r"(?:prod_)?(\d+)", command.args)
+        if match:
+            try:
+                product_id = int(match.group(1))
+            except ValueError:
+                pass
+
+    if product_id:
+        product_app_url = f"{base_url}/?product_id={product_id}"
+        buttons = [
+            [
+                InlineKeyboardButton(
+                    text="🛍 Mahsulotni ko'rish va xarid qilish",
+                    web_app=WebAppInfo(url=product_app_url),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=f"🏪 {store_name} — Barcha mahsulotlar",
+                    web_app=WebAppInfo(url=app_url),
+                )
+            ]
+        ]
+        if is_admin:
+            buttons.append([
+                InlineKeyboardButton(
+                    text="⚙️ Admin Panelini ochish",
+                    web_app=WebAppInfo(url=admin_app_url),
+                )
+            ])
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        welcome_text = (
+            f"Assalomu alaykum, <b>{first_name}</b>!\n\n"
+            f"Tanlagan mahsulotingizni ochish va buyurtma berish uchun quyidagi tugmani bosing 👇"
+        )
+        await message.answer(welcome_text, reply_markup=keyboard, parse_mode="HTML")
+        return
 
     buttons = [
         [
