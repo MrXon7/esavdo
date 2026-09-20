@@ -796,49 +796,83 @@ async function checkDeepLinkProduct() {
 
   const parseId = (val) => {
     if (!val) return null;
-    const match = String(val).match(/(?:prod_?)?(\d+)/i);
-    return match ? Number(match[1]) : null;
+    try {
+      const clean = decodeURIComponent(String(val).trim());
+      const match = clean.match(/(?:prod_?)?(\d+)/i);
+      return match ? Number(match[1]) : null;
+    } catch (e) {
+      const match = String(val).match(/(?:prod_?)?(\d+)/i);
+      return match ? Number(match[1]) : null;
+    }
   };
 
-  // 1. Telegram WebApp start_param (from https://t.me/bot/app?startapp=prod_123)
+  // 1. Direct Telegram WebApp start_param object
   targetId = parseId(tg?.initDataUnsafe?.start_param);
 
-  // 2. URL search parameters (?product_id=123, ?tgWebAppStartParam=prod_123, ?startapp=prod_123)
-  if (!targetId && window.location.search) {
-    const urlParams = new URLSearchParams(window.location.search);
-    targetId =
-      parseId(urlParams.get("product_id")) ||
-      parseId(urlParams.get("tgWebAppStartParam")) ||
-      parseId(urlParams.get("startapp"));
+  // 2. Parse from tg.initData string (standard Telegram URL-encoded query string)
+  if (!targetId && tg?.initData) {
+    try {
+      const initParams = new URLSearchParams(tg.initData);
+      targetId =
+        parseId(initParams.get("start_param")) ||
+        parseId(initParams.get("startapp")) ||
+        parseId(initParams.get("tgWebAppStartParam"));
+    } catch (e) {}
   }
 
-  // 3. URL hash parameters (for Telegram Web & Desktop clients)
+  // 3. Parse from URL search parameters (?tgWebAppStartParam=prod_12, ?product_id=12)
+  if (!targetId && window.location.search) {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      targetId =
+        parseId(urlParams.get("tgWebAppStartParam")) ||
+        parseId(urlParams.get("start_param")) ||
+        parseId(urlParams.get("startapp")) ||
+        parseId(urlParams.get("product_id"));
+    } catch (e) {}
+  }
+
+  // 4. Parse from URL hash (#tgWebAppData=... or #tgWebAppStartParam=...)
   if (!targetId && window.location.hash) {
     try {
       const rawHash = window.location.hash.replace(/^#/, "");
       const hashParams = new URLSearchParams(rawHash);
       targetId =
         parseId(hashParams.get("tgWebAppStartParam")) ||
+        parseId(hashParams.get("start_param")) ||
         parseId(hashParams.get("startapp")) ||
         parseId(hashParams.get("product_id"));
+
+      // Crucial: Telegram encodes start_param inside tgWebAppData parameter!
+      if (!targetId && hashParams.has("tgWebAppData")) {
+        const innerParams = new URLSearchParams(hashParams.get("tgWebAppData"));
+        targetId =
+          parseId(innerParams.get("start_param")) ||
+          parseId(innerParams.get("startapp")) ||
+          parseId(innerParams.get("tgWebAppStartParam")) ||
+          parseId(innerParams.get("product_id"));
+      }
     } catch (e) {}
   }
 
+  console.log("[DeepLink] Target Product ID:", targetId);
   if (!targetId) return;
 
-  // 4. Find product in catalog (type-safe comparison) or fetch directly from API
+  // 5. Find product in catalog (type-safe comparison) or fetch directly from API
   let prod = allProducts.find((p) => Number(p.id) === Number(targetId));
   if (!prod) {
     try {
       prod = await api.getProduct(targetId);
     } catch (err) {
-      console.warn("Deep-link product not found:", err);
+      console.warn("Deep-link product fetch error:", err);
     }
   }
 
   if (prod) {
     switchView("catalog");
-    openProductModal(prod);
+    setTimeout(() => {
+      openProductModal(prod);
+    }, 60);
   }
 }
 
