@@ -3,7 +3,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 
 from bot.bot_instance import bot
 from core.config import settings
@@ -134,24 +134,23 @@ async def announce_product_to_group(product_id: int, db: AsyncSession) -> bool:
     store_name = settings.STORE_NAME
     currency = settings.STORE_CURRENCY
 
-    caption = (
-        f"🌟 <b>{store_name} — Yangi mahsulot!</b>\n\n"
-        f"🏷 <b>{product.name}</b>\n"
-        f"💰 <b>Narxi:</b> {float(product.price):,.0f} {currency}\n\n"
-        f"{product.description or ''}\n\n"
-        f"👇 <i>Buyurtma berish uchun botimiz orqali Mini App'ni oching!</i>"
-    )
+    # Telegram caption character limit is 1024; truncate safely if needed
+    desc = (product.description or "").strip()
+    if len(desc) > 600:
+        desc = desc[:597] + "..."
 
     btn = None
+    direct_link = ""
     try:
         me = await bot.get_me()
         if me.username:
+            direct_link = f"https://t.me/{me.username}?startapp=prod_{product.id}"
             btn = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
                         InlineKeyboardButton(
                             text="🛍 Buyurtma berish",
-                            url=f"https://t.me/{me.username}?startapp=prod_{product.id}",
+                            url=direct_link,
                         )
                     ]
                 ]
@@ -159,21 +158,63 @@ async def announce_product_to_group(product_id: int, db: AsyncSession) -> bool:
     except Exception:
         pass
 
+    link_html = f'\n\n👉 <a href="{direct_link}"><b>[🛍 Buyurtma berish / Ko\'rish]</b></a>' if direct_link else ""
+    caption = (
+        f"🌟 <b>{store_name} — Yangi mahsulot!</b>\n\n"
+        f"🏷 <b>{product.name}</b>\n"
+        f"💰 <b>Narxi:</b> {float(product.price):,.0f} {currency}\n\n"
+        f"{desc}"
+        f"{link_html}"
+    )
+
+    images = product.images or []
+
     try:
-        if product.images:
-            # Send with first photo
-            first_image = product.images[0]
+        if len(images) > 1:
+            # 2 to 10 photos: Send as Telegram Photo Album (MediaGroup)
+            album_photos = images[:10]  # Telegram limit is 10
+            media = []
+            for idx, img in enumerate(album_photos):
+                if idx == 0:
+                    media.append(
+                        InputMediaPhoto(
+                            media=img.file_id,
+                            caption=caption,
+                            parse_mode="HTML",
+                        )
+                    )
+                else:
+                    media.append(InputMediaPhoto(media=img.file_id))
+
+            await bot.send_media_group(
+                chat_id=settings.PRODUCT_ANNOUNCE_GROUP_ID,
+                media=media,
+            )
+
+            # Telegram does not allow inline buttons on media groups, so we send the button below
+            if btn:
+                await bot.send_message(
+                    chat_id=settings.PRODUCT_ANNOUNCE_GROUP_ID,
+                    text=f"🛒 <b>{product.name}</b> mahsulotiga buyurtma berish 👇",
+                    reply_markup=btn,
+                    parse_mode="HTML",
+                )
+        elif len(images) == 1:
+            # Single photo with direct inline button
             await bot.send_photo(
                 chat_id=settings.PRODUCT_ANNOUNCE_GROUP_ID,
-                photo=first_image.file_id,
+                photo=images[0].file_id,
                 caption=caption,
                 reply_markup=btn,
+                parse_mode="HTML",
             )
         else:
+            # No photo: Send text with inline button
             await bot.send_message(
                 chat_id=settings.PRODUCT_ANNOUNCE_GROUP_ID,
                 text=caption,
                 reply_markup=btn,
+                parse_mode="HTML",
             )
         return True
     except Exception as e:
