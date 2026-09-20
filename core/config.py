@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     STORE_CURRENCY: str = "so'm"
     STORE_CONTACT_PHONE: str = ""
     STORE_LOGO_FILE_ID: str = ""
-    TELEGRAM_APP_SHORT_NAME: str = "app"
+    TELEGRAM_APP_SHORT_NAME: str = "onlinesavdo"
 
     DEBUG: bool = False
     SELF_PING_INTERVAL_SECONDS: int = 300

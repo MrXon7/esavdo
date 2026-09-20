@@ -144,7 +144,7 @@ async def announce_product_to_group(product_id: int, db: AsyncSession) -> bool:
     try:
         me = await bot.get_me()
         if me.username:
-            app_name = settings.TELEGRAM_APP_SHORT_NAME or "app"
+            app_name = settings.TELEGRAM_APP_SHORT_NAME or "onlinesavdo"
             direct_link = f"https://t.me/{me.username}/{app_name}?startapp=prod_{product.id}"
             btn = InlineKeyboardMarkup(
                 inline_keyboard=[
