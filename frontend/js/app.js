@@ -794,30 +794,40 @@ if (tg) {
 async function checkDeepLinkProduct() {
   let targetId = null;
 
-  // 1. Telegram start_param (from https://t.me/bot?startapp=prod_123)
-  const startParam = tg?.initDataUnsafe?.start_param;
-  if (startParam) {
-    const match = String(startParam).match(/(?:prod_)?(\d+)/);
-    if (match) targetId = Number(match[1]);
+  const parseId = (val) => {
+    if (!val) return null;
+    const match = String(val).match(/(?:prod_?)?(\d+)/i);
+    return match ? Number(match[1]) : null;
+  };
+
+  // 1. Telegram WebApp start_param (from https://t.me/bot/app?startapp=prod_123)
+  targetId = parseId(tg?.initDataUnsafe?.start_param);
+
+  // 2. URL search parameters (?product_id=123, ?tgWebAppStartParam=prod_123, ?startapp=prod_123)
+  if (!targetId && window.location.search) {
+    const urlParams = new URLSearchParams(window.location.search);
+    targetId =
+      parseId(urlParams.get("product_id")) ||
+      parseId(urlParams.get("tgWebAppStartParam")) ||
+      parseId(urlParams.get("startapp"));
   }
 
-  // 2. URL search parameters (?product_id=123 or ?tgWebAppStartParam=prod_123)
-  if (!targetId) {
-    const urlParams = new URLSearchParams(window.location.search);
-    const pId = urlParams.get("product_id");
-    const tgStart = urlParams.get("tgWebAppStartParam");
-    if (pId) {
-      targetId = Number(pId);
-    } else if (tgStart) {
-      const match = String(tgStart).match(/(?:prod_)?(\d+)/);
-      if (match) targetId = Number(match[1]);
-    }
+  // 3. URL hash parameters (for Telegram Web & Desktop clients)
+  if (!targetId && window.location.hash) {
+    try {
+      const rawHash = window.location.hash.replace(/^#/, "");
+      const hashParams = new URLSearchParams(rawHash);
+      targetId =
+        parseId(hashParams.get("tgWebAppStartParam")) ||
+        parseId(hashParams.get("startapp")) ||
+        parseId(hashParams.get("product_id"));
+    } catch (e) {}
   }
 
   if (!targetId) return;
 
-  // 3. Find product in catalog or fetch directly from API
-  let prod = allProducts.find((p) => p.id === targetId);
+  // 4. Find product in catalog (type-safe comparison) or fetch directly from API
+  let prod = allProducts.find((p) => Number(p.id) === Number(targetId));
   if (!prod) {
     try {
       prod = await api.getProduct(targetId);
