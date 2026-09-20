@@ -38,6 +38,27 @@ class Settings(BaseSettings):
     )
 
     @property
+    def effective_base_url(self) -> str:
+        if self.RENDER_EXTERNAL_URL and self.RENDER_EXTERNAL_URL.strip():
+            return self.RENDER_EXTERNAL_URL.strip().rstrip("/")
+        if self.WEBHOOK_URL and self.WEBHOOK_URL.strip():
+            url = self.WEBHOOK_URL.strip()
+            return url.replace(self.WEBHOOK_PATH, "").rstrip("/")
+        return ""
+
+    @property
+    def effective_webhook_url(self) -> str:
+        if self.WEBHOOK_URL and self.WEBHOOK_URL.strip():
+            url = self.WEBHOOK_URL.strip()
+            if not url.endswith(self.WEBHOOK_PATH):
+                url = f"{url.rstrip('/')}{self.WEBHOOK_PATH}"
+            return url
+        if self.RENDER_EXTERNAL_URL and self.RENDER_EXTERNAL_URL.strip():
+            base = self.RENDER_EXTERNAL_URL.strip().rstrip("/")
+            return f"{base}{self.WEBHOOK_PATH}"
+        return ""
+
+    @property
     def async_database_url(self) -> str:
         url = self.DATABASE_URL.strip()
         # Handle postgres:// and postgresql:// -> postgresql+asyncpg://

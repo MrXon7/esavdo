@@ -95,19 +95,35 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Bazani initsializatsiya qilishda xatolik: {e}")
 
-    # 3. Setup Telegram Webhook if configured
-    if settings.WEBHOOK_URL and "placeholder" not in settings.BOT_TOKEN:
+    # 3. Setup Telegram Webhook or Fallback to Background Polling
+    webhook_url = settings.effective_webhook_url
+    polling_task = None
+
+    if webhook_url and "placeholder" not in settings.BOT_TOKEN:
         try:
-            await bot.set_webhook(
-                url=settings.WEBHOOK_URL,
-                drop_pending_updates=True,
-                allowed_updates=["message", "callback_query", "my_chat_member"],
-            )
-            logger.info(f"Telegram Webhook o'rnatildi: {settings.WEBHOOK_URL}")
+            wh_info = await bot.get_webhook_info()
+            if wh_info.url != webhook_url:
+                await bot.set_webhook(
+                    url=webhook_url,
+                    drop_pending_updates=False,
+                    allowed_updates=["message", "callback_query", "my_chat_member"],
+                )
+                logger.info(f"Telegram Webhook o'rnatildi: {webhook_url}")
+            else:
+                logger.info(f"Telegram Webhook allaqachon sozlangan: {webhook_url}")
         except Exception as e:
             logger.error(f"Webhook o'rnatishda xatolik: {e}")
-    else:
-        logger.warning("WEBHOOK_URL yoki BOT_TOKEN sozlanmagan, webhook o'rnatilmadi.")
+    elif "placeholder" not in settings.BOT_TOKEN:
+        # Neither WEBHOOK_URL nor RENDER_EXTERNAL_URL is configured:
+        # Delete any stale/broken external webhook (like tele.goldenherd.com)
+        # and start background polling so bot responds immediately!
+        try:
+            await bot.delete_webhook(drop_pending_updates=False)
+            logger.info("Eski webhook o'chirildi. Background Polling ishga tushirilmoqda...")
+            polling_task = asyncio.create_task(dp.start_polling(bot, handle_signals=False))
+            logger.info("Bot Polling muvaffaqiyatli ishga tushdi!")
+        except Exception as e:
+            logger.error(f"Polling ishga tushirishda xatolik: {e}")
 
     # 4. Launch self-ping background task for Render free tier
     ping_task = asyncio.create_task(self_ping_worker())
@@ -116,6 +132,12 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     ping_task.cancel()
+    if polling_task:
+        polling_task.cancel()
+        try:
+            await dp.stop_polling()
+        except Exception:
+            pass
     try:
         await bot.session.close()
     except Exception:

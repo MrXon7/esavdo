@@ -9,9 +9,7 @@ router = Router(name="start_router")
 
 
 def _get_base_url() -> str:
-    base_url = settings.RENDER_EXTERNAL_URL.rstrip("/")
-    if not base_url and settings.WEBHOOK_URL:
-        base_url = settings.WEBHOOK_URL.replace("/telegram-webhook", "").rstrip("/")
+    base_url = settings.effective_base_url
     return base_url if base_url else "https://example.com"
 
 
