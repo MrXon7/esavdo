@@ -144,7 +144,7 @@ async def announce_product_to_group(product_id: int, db: AsyncSession) -> bool:
     try:
         me = await bot.get_me()
         if me.username:
-            direct_link = f"https://t.me/{me.username}?startapp=prod_{product.id}"
+            direct_link = f"https://t.me/{me.username}?start=prod_{product.id}"
             btn = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
