@@ -105,6 +105,13 @@ async def create_product_admin(
     await db.commit()
     invalidate_catalog_cache()
 
+    # Automatically announce new product to group if configured
+    if settings.PRODUCT_ANNOUNCE_GROUP_ID:
+        try:
+            await announce_product_to_group(product.id, db)
+        except Exception:
+            pass
+
     # Re-fetch with images
     result = await db.execute(
         select(Product)

@@ -142,6 +142,23 @@ async def announce_product_to_group(product_id: int, db: AsyncSession) -> bool:
         f"👇 <i>Buyurtma berish uchun botimiz orqali Mini App'ni oching!</i>"
     )
 
+    btn = None
+    try:
+        me = await bot.get_me()
+        if me.username:
+            btn = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="🛍 Buyurtma berish",
+                            url=f"https://t.me/{me.username}",
+                        )
+                    ]
+                ]
+            )
+    except Exception:
+        pass
+
     try:
         if product.images:
             # Send with first photo
@@ -150,11 +167,13 @@ async def announce_product_to_group(product_id: int, db: AsyncSession) -> bool:
                 chat_id=settings.PRODUCT_ANNOUNCE_GROUP_ID,
                 photo=first_image.file_id,
                 caption=caption,
+                reply_markup=btn,
             )
         else:
             await bot.send_message(
                 chat_id=settings.PRODUCT_ANNOUNCE_GROUP_ID,
                 text=caption,
+                reply_markup=btn,
             )
         return True
     except Exception as e:
