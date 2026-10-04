@@ -153,22 +153,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS configuration
-trusted_origins = [
-    "https://web.telegram.org",
-    "https://webz.telegram.org",
-    "https://webk.telegram.org",
-    "https://esavdo.onrender.com",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-]
-if settings.effective_base_url:
-    trusted_origins.append(settings.effective_base_url)
-
+# CORS configuration - Allow all origins for Telegram Mini App WebViews
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=trusted_origins if not settings.DEBUG else ["*"],
-    allow_origin_regex=r"^https://.*\.telegram\.org$" if not settings.DEBUG else None,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
