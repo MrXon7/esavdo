@@ -1,6 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
@@ -208,10 +208,7 @@ async def clear_cart(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Clear all items in user's cart."""
-    result = await db.execute(select(CartItem).where(CartItem.user_id == current_user.id))
-    items = result.scalars().all()
-    for item in items:
-        await db.delete(item)
+    """Clear all items in user's cart in a single batch statement."""
+    await db.execute(delete(CartItem).where(CartItem.user_id == current_user.id))
     await db.commit()
     return {"status": "success", "message": "Savat tozalandi"}

@@ -33,7 +33,7 @@ class Order(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     status: Mapped[str] = mapped_column(
         String(50), default=OrderStatus.PENDING.value, nullable=False, index=True
@@ -67,7 +67,7 @@ class OrderItem(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     order_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False
+        Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True
     )
     product_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("products.id", ondelete="SET NULL"), nullable=True

@@ -759,9 +759,11 @@ async function loadOrders(forceRefresh = false) {
   }
 }
 
-// ─── 9. Instant Search (0ms client-side) ────────────────────────────────────
+// ─── 9. Instant Search (Debounced client-side filtering) ───────────────────
+let _searchDebounceTimer = null;
 elSearchInput.oninput = () => {
-  applyFilters();
+  clearTimeout(_searchDebounceTimer);
+  _searchDebounceTimer = setTimeout(applyFilters, 150);
 };
 
 // ─── 10. Cart Badge Listener ────────────────────────────────────────────────
@@ -791,11 +793,9 @@ if (tg) {
 }
 
 // ─── 11. Deep-Link Handler (Direct Product Modal on Click) ─────────────────
-async function checkDeepLinkProduct() {
-  let targetId = null;
-
+function getDeepLinkProductId() {
   const parseId = (val) => {
-    if (!val) return null;
+    if (!val && val !== 0) return null;
     try {
       const clean = decodeURIComponent(String(val).trim());
       const match = clean.match(/(?:prod_?)?(\d+)/i);
@@ -806,79 +806,75 @@ async function checkDeepLinkProduct() {
     }
   };
 
-  // 1. Direct Telegram WebApp start_param object
-  targetId = parseId(tg?.initDataUnsafe?.start_param);
-
-  // 2. Parse from tg.initData string (standard Telegram URL-encoded query string)
-  if (!targetId && tg?.initData) {
-    try {
-      const initParams = new URLSearchParams(tg.initData);
-      targetId =
-        parseId(initParams.get("start_param")) ||
-        parseId(initParams.get("startapp")) ||
-        parseId(initParams.get("tgWebAppStartParam"));
-    } catch (e) {}
+  // 1. Telegram SDK — most reliable source on all platforms (mobile + desktop)
+  if (tg) {
+    // start_param is the official way: available after tg.ready() on both iOS and Android
+    const sp = tg.initDataUnsafe?.start_param;
+    if (sp) { const id = parseId(sp); if (id) return id; }
   }
 
-  // 3. Parse from URL search parameters (?tgWebAppStartParam=prod_12, ?product_id=12)
-  if (!targetId && window.location.search) {
-    try {
-      const urlParams = new URLSearchParams(window.location.search);
-      targetId =
-        parseId(urlParams.get("tgWebAppStartParam")) ||
-        parseId(urlParams.get("start_param")) ||
-        parseId(urlParams.get("startapp")) ||
-        parseId(urlParams.get("product_id"));
-    } catch (e) {}
-  }
-
-  // 4. Parse from URL hash (#tgWebAppData=... or #tgWebAppStartParam=...)
-  if (!targetId && window.location.hash) {
-    try {
-      const rawHash = window.location.hash.replace(/^#/, "");
+  // 2. Hash params — Telegram encodes everything in location.hash before SDK parses it
+  try {
+    const rawHash = window.location.hash.replace(/^#/, "");
+    if (rawHash) {
       const hashParams = new URLSearchParams(rawHash);
-      targetId =
-        parseId(hashParams.get("tgWebAppStartParam")) ||
-        parseId(hashParams.get("start_param")) ||
-        parseId(hashParams.get("startapp")) ||
-        parseId(hashParams.get("product_id"));
-
-      // Crucial: Telegram encodes start_param inside tgWebAppData parameter!
-      if (!targetId && hashParams.has("tgWebAppData")) {
-        const innerParams = new URLSearchParams(hashParams.get("tgWebAppData"));
-        targetId =
-          parseId(innerParams.get("start_param")) ||
-          parseId(innerParams.get("startapp")) ||
-          parseId(innerParams.get("tgWebAppStartParam")) ||
-          parseId(innerParams.get("product_id"));
+      const candidates = [
+        hashParams.get("tgWebAppStartParam"),
+        hashParams.get("startapp"),
+        hashParams.get("start_param"),
+        hashParams.get("product_id"),
+      ];
+      for (const c of candidates) {
+        const id = parseId(c);
+        if (id) return id;
       }
-    } catch (e) {}
-  }
+    }
+  } catch (e) {}
 
-  console.log("[DeepLink] Target Product ID:", targetId);
+  // 3. Query string — some fallback browsers / Telegram Desktop
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const candidates = [
+      urlParams.get("tgWebAppStartParam"),
+      urlParams.get("startapp"),
+      urlParams.get("start_param"),
+      urlParams.get("product_id"),
+    ];
+    for (const c of candidates) {
+      const id = parseId(c);
+      if (id) return id;
+    }
+  } catch (e) {}
+
+  return null;
+}
+
+async function checkDeepLinkProduct() {
+  const targetId = getDeepLinkProductId();
+  console.log("[DeepLink] Product ID:", targetId);
   if (!targetId) return;
 
-  // 5. Find product in catalog (type-safe comparison) or fetch directly from API
+  // Find in already-loaded catalog first (free, 0ms)
   let prod = allProducts.find((p) => Number(p.id) === Number(targetId));
+
+  // Fallback: fetch directly from API (no auth required for products)
   if (!prod) {
     try {
-      prod = await api.getProduct(targetId);
-    } catch (err) {
-      console.warn("Deep-link product fetch error:", err);
+      prod = await fetch(`/api/products/${targetId}`).then(r => r.ok ? r.json() : null);
+    } catch (e) {
+      console.warn("[DeepLink] Fetch failed:", e);
     }
   }
 
   if (prod) {
     switchView("catalog");
-    setTimeout(() => {
-      openProductModal(prod);
-    }, 60);
+    // Small delay ensures DOM is fully rendered before modal opens
+    setTimeout(() => openProductModal(prod), 80);
   }
 }
 
 // ─── Initial Boot ───────────────────────────────────────────────────────────
-async function startApp() {
-  // Check if current user is admin — show Admin Switch button in header
+async function checkAdminStatus() {
   if (tg && tg.initData) {
     try {
       const me = await api.getMe();
@@ -890,9 +886,17 @@ async function startApp() {
       console.log("Foydalanuvchi ma'lumoti:", err.message);
     }
   }
+}
 
-  // Parallel loading for maximum speed
-  await Promise.all([initStore(), loadCategories(), cart.load(), loadProducts()]);
+async function startApp() {
+  // Parallel loading for maximum speed — store settings, categories, cart, products, admin status all at once!
+  await Promise.all([
+    initStore(),
+    loadCategories(),
+    cart.load(),
+    loadProducts(),
+    checkAdminStatus(),
+  ]);
 
   // Deep-link auto-open if specific product was requested
   await checkDeepLinkProduct();

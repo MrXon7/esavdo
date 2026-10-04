@@ -1,3 +1,4 @@
+import logging
 from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,11 +9,14 @@ from pydantic import BaseModel, Field
 
 from core.database import get_db
 from api.deps import get_current_user
+from api.utils import get_safe_image_id
 from models.user import User
 from models.product import Product
 from models.cart import CartItem
 from models.order import Order, OrderItem, OrderStatus
 from bot.services.notifier import notify_admin_new_order
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/orders", tags=["Orders"])
 
@@ -102,7 +106,7 @@ async def create_order(
     await db.flush()  # to obtain new_order.id
 
     # 4. Create OrderItems and clear cart
-    order_items_response = []
+    created_items = []
     for item in cart_items:
         oi = OrderItem(
             order_id=new_order.id,
@@ -111,20 +115,26 @@ async def create_order(
             price_at_order_time=item.product.price,
         )
         db.add(oi)
+        created_items.append((oi, item))
+        await db.delete(item)
+
+    await db.flush()  # Populates real auto-increment IDs for all oi
+
+    order_items_response = []
+    for oi, item in created_items:
         img_id = (
             item.product.images[0].file_id
             if (item.product and item.product.images)
             else None
         )
         order_items_response.append({
-            "id": 0,
+            "id": oi.id,
             "product_id": item.product_id,
             "product_name": item.product.name,
             "quantity": item.quantity,
             "price_at_order_time": float(item.product.price),
             "image_file_id": img_id,
         })
-        await db.delete(item)
 
     await db.commit()
     await db.refresh(new_order)
@@ -147,21 +157,6 @@ async def create_order(
         "updated_at": new_order.updated_at,
         "items": order_items_response,
     }
-
-
-def _safe_image_id(order_item) -> Optional[str]:
-    """Safely extract the first product image file_id. Returns None on any error."""
-    try:
-        product = order_item.product
-        if not product:
-            return None
-        images = getattr(product, "images", None)
-        if not images:
-            return None
-        first = images[0] if images else None
-        return getattr(first, "file_id", None) if first else None
-    except Exception:
-        return None
 
 
 @router.get("", response_model=List[OrderDetailResponse])
@@ -194,7 +189,7 @@ async def get_my_orders(
                         "product_name": i.product.name if i.product else "O'chirilgan mahsulot",
                         "quantity": i.quantity,
                         "price_at_order_time": float(i.price_at_order_time),
-                        "image_file_id": _safe_image_id(i),
+                        "image_file_id": get_safe_image_id(i),
                     })
                 resp.append({
                     "id": o.id,
@@ -209,12 +204,10 @@ async def get_my_orders(
                     "items": items,
                 })
             except Exception as ex:
-                import logging
-                logging.getLogger(__name__).warning(f"Buyurtma #{o.id} ni yuklashda xatolik: {ex}")
+                logger.warning(f"Buyurtma #{o.id} ni yuklashda xatolik: {ex}")
         return resp
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"get_my_orders xatolik: {e}")
+        logger.error(f"get_my_orders xatolik: {e}")
         raise HTTPException(status_code=500, detail=f"Buyurtmalar tarixini yuklashda xatolik: {str(e)}")
 
 

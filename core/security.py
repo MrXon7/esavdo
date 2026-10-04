@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import time
 import urllib.parse
 from typing import Any, Dict, Optional
 from core.config import settings
@@ -44,6 +45,16 @@ def validate_telegram_init_data(init_data: str, bot_token: str) -> Optional[Dict
 
         if not hmac.compare_digest(calculated_hash, received_hash):
             return None
+
+        # Check auth_date to prevent replay attacks (allow up to 24 hours)
+        auth_date_raw = parsed_data.get("auth_date")
+        if auth_date_raw:
+            try:
+                auth_date = int(auth_date_raw)
+                if (time.time() - auth_date) > 86400:
+                    return None
+            except (ValueError, TypeError):
+                return None
 
         # Parse user JSON if present
         if "user" in parsed_data:

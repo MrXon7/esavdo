@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     TELEGRAM_APP_SHORT_NAME: str = "onlinesavdo"
 
     DEBUG: bool = False
-    SELF_PING_INTERVAL_SECONDS: int = 300
+    SELF_PING_INTERVAL_SECONDS: int = 240
 
     @field_validator("ADMIN_GROUP_ID", "PRODUCT_ANNOUNCE_GROUP_ID", mode="before")
     @classmethod

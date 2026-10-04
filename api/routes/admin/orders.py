@@ -1,3 +1,4 @@
+import logging
 from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -9,11 +10,14 @@ from pydantic import BaseModel
 from core.config import settings
 from core.database import get_db
 from api.deps import get_current_admin
+from api.utils import get_safe_image_id
 from models.admin import Admin
 from models.order import Order, OrderItem, OrderStatus
 from models.product import Product
 from models.user import User
 from bot.services.notifier import notify_customer_order_status
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin/orders", tags=["Admin - Orders"])
 
@@ -59,23 +63,6 @@ class UpdateOrderStatusRequest(BaseModel):
     status: str
 
 
-def _safe_image_id(order_item) -> Optional[str]:
-    """Safely extract the first image file_id from an OrderItem.product.
-    Returns None on any error (deleted product, missing images, etc.)
-    """
-    try:
-        product = order_item.product
-        if not product:
-            return None
-        images = getattr(product, "images", None)
-        if not images:
-            return None
-        first = images[0] if images else None
-        return getattr(first, "file_id", None) if first else None
-    except Exception:
-        return None
-
-
 def _build_order_item_dict(i) -> dict:
     return {
         "id": i.id,
@@ -83,7 +70,7 @@ def _build_order_item_dict(i) -> dict:
         "product_name": (i.product.name if i.product else "O'chirilgan mahsulot"),
         "quantity": i.quantity,
         "price_at_order_time": float(i.price_at_order_time),
-        "image_file_id": _safe_image_id(i),
+        "image_file_id": get_safe_image_id(i),
     }
 
 
@@ -131,12 +118,10 @@ async def list_orders_admin(
                 })
             except Exception as ex:
                 # Log and skip malformed order — don't crash the whole list
-                import logging
-                logging.getLogger(__name__).warning(f"Buyurtma #{o.id} ni yuklashda xatolik: {ex}")
+                logger.warning(f"Buyurtma #{o.id} ni yuklashda xatolik: {ex}")
         return resp
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"list_orders_admin xatolik: {e}")
+        logger.error(f"list_orders_admin xatolik: {e}")
         raise HTTPException(status_code=500, detail=f"Buyurtmalarni yuklashda xatolik: {str(e)}")
 
 

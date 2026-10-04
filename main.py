@@ -2,7 +2,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -154,13 +154,37 @@ app = FastAPI(
 )
 
 # CORS configuration
+trusted_origins = [
+    "https://web.telegram.org",
+    "https://webz.telegram.org",
+    "https://webk.telegram.org",
+    "https://esavdo.onrender.com",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+if settings.effective_base_url:
+    trusted_origins.append(settings.effective_base_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=trusted_origins if not settings.DEBUG else ["*"],
+    allow_origin_regex=r"^https://.*\.telegram\.org$" if not settings.DEBUG else None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_no_cache_headers(request: Request, call_next):
+    """Prevent Telegram WebView from aggressively caching static JS and CSS."""
+    response = await call_next(request)
+    path = request.url.path
+    if path.endswith((".js", ".css", ".html")) or path in ("/", "/admin", "/admin/"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 # 1. API routers (must be registered before static mounts)
 app.include_router(health_router)

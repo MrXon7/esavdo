@@ -7,7 +7,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMedia
 
 from bot.bot_instance import bot
 from core.config import settings
-from models.order import Order, OrderStatus
+from models.order import Order, OrderStatus, OrderItem
 from models.product import Product
 from models.settings import StoreSettings
 
@@ -41,7 +41,7 @@ async def notify_admin_new_order(order_id: int, db: AsyncSession):
         select(Order)
         .where(Order.id == order_id)
         .options(
-            selectinload(Order.items).selectinload(Order.items.property.mapper.class_.product),
+            selectinload(Order.items).selectinload(OrderItem.product),
             selectinload(Order.user),
         )
     )
