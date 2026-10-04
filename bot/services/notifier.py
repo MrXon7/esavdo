@@ -117,10 +117,15 @@ async def notify_customer_order_status(
         logger.warning(f"Mijozga ({telegram_id}) buyurtma holati xabarini yuborishda xatolik: {e}")
 
 
-async def announce_product_to_group(product_id: int, db: AsyncSession) -> bool:
+async def announce_product_to_group(product_id: int, db: Optional[AsyncSession] = None) -> bool:
     """Announces a product to the configured group/channel."""
     if not settings.PRODUCT_ANNOUNCE_GROUP_ID:
         return False
+
+    if db is None:
+        from core.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as session:
+            return await announce_product_to_group(product_id, session)
 
     result = await db.execute(
         select(Product)
@@ -159,13 +164,15 @@ async def announce_product_to_group(product_id: int, db: AsyncSession) -> bool:
     except Exception:
         pass
 
-    link_html = f'\n\n👉 <a href="{direct_link}"><b>[🛍 Buyurtma berish / Ko\'rish]</b></a>' if direct_link else ""
+    # No duplicate link inside caption! Caption is clean, engaging and beautifully formatted.
+    desc_section = f"\n\n📝 <b>Batafsil ma'lumot:</b>\n{desc}" if desc else ""
     caption = (
-        f"🌟 <b>{store_name} — Yangi mahsulot!</b>\n\n"
+        f"✨ <b>YANGI MAHSULOT SOTUVDA!</b>\n"
+        f"🏬 <b>{store_name}</b>\n\n"
         f"🏷 <b>{product.name}</b>\n"
-        f"💰 <b>Narxi:</b> {float(product.price):,.0f} {currency}\n\n"
-        f"{desc}"
-        f"{link_html}"
+        f"💰 <b>Narxi:</b> <b>{float(product.price):,.0f} {currency}</b>"
+        f"{desc_section}\n\n"
+        f"<i>Xarid qilish uchun quyidagi tugmani bosing 👇</i>"
     )
 
     images = product.images or []

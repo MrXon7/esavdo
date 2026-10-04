@@ -1,3 +1,4 @@
+import asyncio
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, update
@@ -5,6 +6,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 
+from core.config import settings
 from core.database import get_db
 from api.deps import get_current_admin
 from models.admin import Admin
@@ -105,12 +107,9 @@ async def create_product_admin(
     await db.commit()
     invalidate_catalog_cache()
 
-    # Automatically announce new product to group if configured
+    # Automatically announce new product to group in background if configured
     if settings.PRODUCT_ANNOUNCE_GROUP_ID:
-        try:
-            await announce_product_to_group(product.id, db)
-        except Exception:
-            pass
+        asyncio.create_task(announce_product_to_group(product.id))
 
     # Re-fetch with images
     result = await db.execute(

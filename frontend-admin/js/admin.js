@@ -240,7 +240,7 @@ function renderOrdersFromData(orders) {
  * Fetches all orders once, then allows instant 0ms filtering by status.
  * @param {boolean} forceRefresh - if true, bypass cache and fetch from server
  */
-async function loadOrders(forceRefresh = false) {
+async function loadOrders(forceRefresh = false, silent = false) {
   if (!elOrdersContainer) return;
 
   // Serve from memory cache immediately (no skeleton, no server call)
@@ -249,15 +249,17 @@ async function loadOrders(forceRefresh = false) {
     return;
   }
 
-  // First time or forced — show skeleton and fetch from server
+  // First time or forced — show skeleton unless silent
   try {
-    renderAdminOrdersSkeleton();
+    if (!silent) renderAdminOrdersSkeleton();
     const orders = await adminApi.getOrders();
     _allAdminOrders = orders || [];
     filterAndRenderOrders();
   } catch (err) {
-    console.error("Load orders error:", err);
-    elOrdersContainer.innerHTML = `<div style="color:var(--danger-color); text-align:center; padding:20px;">Xatolik: ${err.message}</div>`;
+    if (!silent) {
+      console.error("Load orders error:", err);
+      elOrdersContainer.innerHTML = `<div style="color:var(--danger-color); text-align:center; padding:20px;">Xatolik: ${err.message}</div>`;
+    }
   }
 }
 
@@ -367,7 +369,7 @@ function renderProductsFromData(products) {
  * Load products with smart caching.
  * @param {boolean} forceRefresh - if true, bypass cache
  */
-async function loadProducts(forceRefresh = false) {
+async function loadProducts(forceRefresh = false, silent = false) {
   if (!elProductsContainer) return;
 
   if (!forceRefresh && _productsCache !== null) {
@@ -376,13 +378,15 @@ async function loadProducts(forceRefresh = false) {
   }
 
   try {
-    renderAdminProductsSkeleton();
+    if (!silent) renderAdminProductsSkeleton();
     const products = await adminApi.getProducts();
     _productsCache = products;
     renderProductsFromData(products);
   } catch (err) {
-    console.error("Load products error:", err);
-    elProductsContainer.innerHTML = `<div style="color:var(--danger-color); text-align:center; padding:20px;">Xatolik: ${err.message}</div>`;
+    if (!silent) {
+      console.error("Load products error:", err);
+      elProductsContainer.innerHTML = `<div style="color:var(--danger-color); text-align:center; padding:20px;">Xatolik: ${err.message}</div>`;
+    }
   }
 }
 
@@ -579,7 +583,7 @@ elProductForm.onsubmit = async (e) => {
     _productsCache = null; // Invalidate on save
     _imagesCache = null;   // Invalidate images cache so updated image statuses show in gallery!
     closeProductModal();
-    loadProducts(true);
+    await loadProducts(true);
   } catch (err) {
     alert("Xatolik: " + err.message);
   } finally {
@@ -856,3 +860,18 @@ async function bootAdmin() {
 }
 
 bootAdmin();
+
+// ─── Real-time Admin Auto-Sync ──────────────────────────────────────────────
+setInterval(() => {
+  if (document.hidden) return;
+  if (currentTab === "orders") loadOrders(true, true);
+  else if (currentTab === "products") loadProducts(true, true);
+  else if (currentTab === "images") loadImagesGallery();
+}, 10000);
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    if (currentTab === "orders") loadOrders(true, true);
+    else if (currentTab === "products") loadProducts(true, true);
+  }
+});

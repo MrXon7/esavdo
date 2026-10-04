@@ -194,15 +194,18 @@ function selectCategory(id) {
 }
 
 // ─── 3. Products Loading & Instant Filtering ────────────────────────────────
-async function loadProducts() {
+async function loadProducts(silent = false) {
   try {
-    renderProductsSkeleton(4);
+    if (!silent) renderProductsSkeleton(4);
     // Fetch full active catalog into memory
-    allProducts = await api.getProducts();
+    const fetched = await api.getProducts();
+    allProducts = fetched || [];
     applyFilters();
   } catch (err) {
-    console.error("Products load error:", err);
-    elProductsGrid.innerHTML = `<div class="empty-state" style="grid-column: span 2;">Mahsulotlarni yuklashda xatolik yuz berdi</div>`;
+    if (!silent) {
+      console.error("Products load error:", err);
+      elProductsGrid.innerHTML = `<div class="empty-state" style="grid-column: span 2;">Mahsulotlarni yuklashda xatolik yuz berdi</div>`;
+    }
   }
 }
 
@@ -577,9 +580,10 @@ function switchView(viewName) {
   if (viewName === "cart") {
     renderCart();
   } else if (viewName === "orders") {
-    loadOrders();
+    loadOrders(false);
   } else if (viewName === "catalog") {
     renderProducts();
+    loadProducts(true); // Silent background sync for fresh products!
   }
 
   // Telegram BackButton
@@ -736,7 +740,7 @@ window.deleteUserOrder = async (orderId) => {
   }
 };
 
-async function loadOrders(forceRefresh = false) {
+async function loadOrders(forceRefresh = false, silent = false) {
   try {
     const now = Date.now();
     const cacheValid = _ordersCache !== null && (now - _ordersCacheTime) < ORDERS_CACHE_TTL;
@@ -747,15 +751,17 @@ async function loadOrders(forceRefresh = false) {
       return;
     }
 
-    // First load or expired cache — show skeleton
-    renderOrdersSkeleton();
+    // First load or expired cache — show skeleton unless silent
+    if (!silent) renderOrdersSkeleton();
     const orders = await api.getMyOrders();
     _ordersCache = orders;
     _ordersCacheTime = Date.now();
     renderOrdersFromData(orders);
   } catch (err) {
-    console.error("Orders load error:", err);
-    elOrdersList.innerHTML = `<div class="empty-state">Buyurtmalarni yuklab bo'lmadi</div>`;
+    if (!silent) {
+      console.error("Orders load error:", err);
+      elOrdersList.innerHTML = `<div class="empty-state">Buyurtmalarni yuklab bo'lmadi</div>`;
+    }
   }
 }
 
@@ -903,3 +909,20 @@ async function startApp() {
 }
 
 startApp();
+
+// ─── 12. Real-time Background Auto-Sync ────────────────────────────────────
+setInterval(() => {
+  if (document.hidden) return;
+  if (currentView === "catalog") {
+    loadProducts(true);
+  } else if (currentView === "orders") {
+    loadOrders(true, true);
+  }
+}, 12000);
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    if (currentView === "catalog") loadProducts(true);
+    else if (currentView === "orders") loadOrders(true, true);
+  }
+});
