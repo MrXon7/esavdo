@@ -53,18 +53,23 @@ async def get_products(
     cached_all = get_cached_products()
 
     if cached_all is None:
-        query = (
-            select(Product)
-            .where(Product.is_active == True)
-            .options(selectinload(Product.images))
-            .order_by(Product.id.desc())
-        )
-        result = await db.execute(query)
-        products = result.scalars().all()
-        cached_all = [
-            ProductListResponse.model_validate(p).model_dump() for p in products
-        ]
-        set_cached_products(cached_all)
+        try:
+            query = (
+                select(Product)
+                .where(Product.is_active == True)
+                .options(selectinload(Product.images))
+                .order_by(Product.id.desc())
+            )
+            result = await db.execute(query)
+            products = result.scalars().all()
+            cached_all = [
+                ProductListResponse.model_validate(p).model_dump() for p in products
+            ]
+            set_cached_products(cached_all)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Mahsulotlarni olishda xatolik: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Mahsulotlarni yuklashda xatolik: {str(e)}")
 
     # Filter in memory if parameters provided
     filtered = cached_all

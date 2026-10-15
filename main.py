@@ -74,11 +74,23 @@ async def lifespan(app: FastAPI):
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-            # Automatic schema migration for new columns (Section 1: stock & discounts)
-            from sqlalchemy import text
-            await conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS old_price NUMERIC(14, 2);"))
-            await conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS stock_quantity INTEGER NOT NULL DEFAULT 100;"))
-            await conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS unit VARCHAR(50) NOT NULL DEFAULT 'dona';"))
+            
+            def run_migrations(sync_conn):
+                from sqlalchemy import inspect, text
+                inspector = inspect(sync_conn)
+                existing_cols = {c["name"] for c in inspector.get_columns("products")}
+                logger.info(f"Mavjud 'products' ustunlari: {existing_cols}")
+                if "old_price" not in existing_cols:
+                    sync_conn.execute(text("ALTER TABLE products ADD COLUMN old_price NUMERIC(14, 2);"))
+                    logger.info("Migratsiya: 'old_price' ustuni qo'shildi.")
+                if "stock_quantity" not in existing_cols:
+                    sync_conn.execute(text("ALTER TABLE products ADD COLUMN stock_quantity INTEGER NOT NULL DEFAULT 100;"))
+                    logger.info("Migratsiya: 'stock_quantity' ustuni qo'shildi.")
+                if "unit" not in existing_cols:
+                    sync_conn.execute(text("ALTER TABLE products ADD COLUMN unit VARCHAR(50) NOT NULL DEFAULT 'dona';"))
+                    logger.info("Migratsiya: 'unit' ustuni qo'shildi.")
+
+            await conn.run_sync(run_migrations)
         async with AsyncSessionLocal() as session:
             from core.cache import set_cached_admin_ids
             from models.admin import Admin as AdminModel
