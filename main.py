@@ -120,7 +120,10 @@ async def lifespan(app: FastAPI):
     if webhook_url and "placeholder" not in settings.BOT_TOKEN:
         try:
             wh_info = await bot.get_webhook_info()
-            if wh_info.url != webhook_url:
+            # If webhook is already pointed to Koyeb, do not hijack it if current service is Render
+            if wh_info.url and "koyeb.app" in wh_info.url and "koyeb.app" not in webhook_url:
+                logger.info(f"Telegram Webhook allaqachon Koyeb'ga sozlangan ({wh_info.url}). Hijack qilinmadi.")
+            elif wh_info.url != webhook_url:
                 await bot.set_webhook(
                     url=webhook_url,
                     drop_pending_updates=False,
