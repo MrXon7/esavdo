@@ -253,14 +253,39 @@ function renderProducts() {
       ? `<span class="thumb-photos-badge">📷 ${p.images.length}</span>`
       : "";
 
+    let discountBadge = "";
+    if (p.old_price && p.old_price > p.price) {
+      const discountPct = Math.round((1 - p.price / p.old_price) * 100);
+      discountBadge = `<span class="badge-discount">-${discountPct}%</span>`;
+    }
+
+    const isOutOfStock = p.stock_quantity !== undefined && p.stock_quantity <= 0;
+    const outOfStockBadge = isOutOfStock
+      ? `<span class="badge-out-of-stock">Tugagan</span>`
+      : "";
+
+    let priceHtml = "";
+    if (p.old_price && p.old_price > p.price) {
+      priceHtml = `
+        <div class="product-price-row">
+          <span class="product-price">${cart.formatPrice(p.price)}</span>
+          <span class="product-old-price">${cart.formatPrice(p.old_price)}</span>
+        </div>
+      `;
+    } else {
+      priceHtml = `<div class="product-price">${cart.formatPrice(p.price)}</div>`;
+    }
+
     card.innerHTML = `
       <div class="product-thumb-wrapper">
         <img src="${imgUrl}" class="product-thumb" alt="${p.name}" loading="lazy" />
         ${photoBadge}
+        ${discountBadge}
+        ${outOfStockBadge}
       </div>
       <div class="product-details">
         <div class="product-title">${p.name}</div>
-        <div class="product-price">${cart.formatPrice(p.price)}</div>
+        ${priceHtml}
         <div class="card-action-box" data-action-prodid="${p.id}"></div>
       </div>
     `;
@@ -284,6 +309,15 @@ function updateCardActionUI(productId) {
   const prod = allProducts.find((x) => x.id === Number(productId));
   const qtyInCart = cart.getItemQuantity(productId);
 
+  if (prod && prod.stock_quantity !== undefined && prod.stock_quantity <= 0) {
+    box.innerHTML = `
+      <button class="btn-add-cart btn-disabled" style="font-size:12px; padding:7px 10px;" disabled onclick="event.stopPropagation()">
+        Mavjud emas
+      </button>
+    `;
+    return;
+  }
+
   if (qtyInCart > 0) {
     box.innerHTML = `
       <div class="qty-counter" onclick="event.stopPropagation()">
@@ -305,6 +339,11 @@ function updateCardActionUI(productId) {
     box.querySelector(".btn-inc").onclick = (e) => {
       e.stopPropagation();
       const currentQty = cart.getItemQuantity(productId);
+      if (prod && prod.stock_quantity !== undefined && currentQty >= prod.stock_quantity) {
+        showToast(`Omborda faqat ${prod.stock_quantity} ${prod.unit || 'dona'} mavjud`);
+        triggerHaptic("error");
+        return;
+      }
       const newQty = currentQty + 1;
       triggerHaptic("light");
       cart.setQuantity(productId, newQty);
@@ -427,12 +466,37 @@ function openProductModal(prod) {
   }
 
   elModalTitle.textContent = prod.name;
-  elModalPrice.textContent = cart.formatPrice(prod.price);
-  elModalDesc.textContent = prod.description || "Ushbu mahsulot uchun batafsil tavsif kiritilmagan.";
 
-  elModalAddBtn.textContent = "🛒 Savatga qo'shish";
+  if (prod.old_price && prod.old_price > prod.price) {
+    const discountPct = Math.round((1 - prod.price / prod.old_price) * 100);
+    elModalPrice.innerHTML = `${cart.formatPrice(prod.price)} <span class="modal-old-price">${cart.formatPrice(prod.old_price)}</span> <span class="badge-discount" style="position:static; margin-left:8px; vertical-align:middle;">-${discountPct}%</span>`;
+  } else {
+    elModalPrice.textContent = cart.formatPrice(prod.price);
+  }
+
+  const isOutOfStock = prod.stock_quantity !== undefined && prod.stock_quantity <= 0;
+  const isLowStock = prod.stock_quantity !== undefined && prod.stock_quantity > 0 && prod.stock_quantity <= 5;
+  const u = prod.unit || "dona";
+
+  let stockNotice = "";
+  if (isOutOfStock) {
+    stockNotice = `<div class="modal-stock-alert out">⚠️ Ushbu mahsulot hozirda sotuvda tugagan</div>`;
+    elModalAddBtn.textContent = "Mavjud emas";
+    elModalAddBtn.disabled = true;
+    elModalAddBtn.classList.add("btn-disabled");
+  } else if (isLowStock) {
+    stockNotice = `<div class="modal-stock-alert low">⚠️ Omborda kam qoldi: faqat ${prod.stock_quantity} ${u} mavjud</div>`;
+    elModalAddBtn.textContent = "🛒 Savatga qo'shish";
+    elModalAddBtn.disabled = false;
+    elModalAddBtn.classList.remove("btn-disabled");
+  } else {
+    elModalAddBtn.textContent = "🛒 Savatga qo'shish";
+    elModalAddBtn.disabled = false;
+    elModalAddBtn.classList.remove("btn-disabled");
+  }
+
+  elModalDesc.innerHTML = `${stockNotice}<div>${prod.description || "Ushbu mahsulot uchun batafsil tavsif kiritilmagan."}</div>`;
   elModalAddBtn.classList.remove("added");
-  elModalAddBtn.disabled = false;
 
   elProductModal.classList.add("active");
   if (tg) tg.BackButton.show();

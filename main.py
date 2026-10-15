@@ -29,6 +29,7 @@ from api.routes.admin.categories import router as admin_categories_router
 from api.routes.admin.products import router as admin_products_router
 from api.routes.admin.images import router as admin_images_router
 from api.routes.admin.orders import router as admin_orders_router
+from api.routes.admin.analytics import router as admin_analytics_router
 
 logging.basicConfig(
     level=logging.DEBUG if settings.DEBUG else logging.INFO,
@@ -73,6 +74,11 @@ async def lifespan(app: FastAPI):
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            # Automatic schema migration for new columns (Section 1: stock & discounts)
+            from sqlalchemy import text
+            await conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS old_price NUMERIC(14, 2);"))
+            await conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS stock_quantity INTEGER NOT NULL DEFAULT 100;"))
+            await conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS unit VARCHAR(50) NOT NULL DEFAULT 'dona';"))
         async with AsyncSessionLocal() as session:
             from core.cache import set_cached_admin_ids
             from models.admin import Admin as AdminModel
@@ -190,6 +196,7 @@ app.include_router(admin_categories_router)
 app.include_router(admin_products_router)
 app.include_router(admin_images_router)
 app.include_router(admin_orders_router)
+app.include_router(admin_analytics_router)
 
 from fastapi.responses import RedirectResponse
 

@@ -26,6 +26,9 @@ class ProductListResponse(BaseModel):
     name: str
     description: Optional[str] = None
     price: float
+    old_price: Optional[float] = None
+    stock_quantity: int = 100
+    unit: str = "dona"
     category_id: Optional[int] = None
     is_active: bool
     images: List[ProductImageSchema] = []

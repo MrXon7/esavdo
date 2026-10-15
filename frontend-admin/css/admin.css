@@ -630,3 +630,126 @@ body {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* ─── Analytics & KPI Dashboard ─────────────────────────────────────────── */
+.analytics-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.kpi-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.kpi-card.highlight-warning {
+  border-color: rgba(255, 149, 0, 0.4);
+  background: linear-gradient(135deg, var(--bg-card), rgba(255, 149, 0, 0.05));
+}
+
+.kpi-card.highlight-success {
+  border-color: rgba(52, 199, 89, 0.4);
+  background: linear-gradient(135deg, var(--bg-card), rgba(52, 199, 89, 0.05));
+}
+
+.kpi-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 6px;
+}
+
+.kpi-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.kpi-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+/* Sales Trend Bar Chart */
+.sales-chart-container {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 6px;
+  height: 120px;
+  padding: 16px 4px 6px 4px;
+}
+
+.chart-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  justify-content: flex-end;
+}
+
+.chart-bar-fill {
+  width: 100%;
+  max-width: 26px;
+  background: linear-gradient(180deg, var(--button-color), #005bb5);
+  border-radius: 4px 4px 0 0;
+  min-height: 6px;
+  transition: height 0.4s ease;
+}
+
+.chart-bar-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.chart-bar-val {
+  font-size: 8.5px;
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
+/* Low Stock Tag & Product Badges */
+.stock-badge {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stock-in { background: rgba(52, 199, 89, 0.15); color: #16a34a; }
+.stock-low { background: rgba(255, 149, 0, 0.18); color: #d97706; }
+.stock-out { background: rgba(255, 59, 48, 0.15); color: #dc2626; }
+
+.discount-tag {
+  background: #ff3b30;
+  color: #ffffff;
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+}
+
+.old-price-text {
+  text-decoration: line-through;
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin-right: 4px;
+}

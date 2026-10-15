@@ -109,11 +109,77 @@
     </div>
   </section>
 
+  <!-- Tab: Analytics & Dashboard -->
+  <section id="tab-analytics" class="admin-section">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <h2 style="font-size:18px; font-weight:800; margin:0;">📊 Savdo tahlili va Hisobotlar</h2>
+      <button class="filter-btn" id="btn-refresh-analytics" style="color:var(--button-color); font-weight:700;">🔄 Yangilash</button>
+    </div>
+
+    <!-- Excel Export Buttons -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+      <a href="/api/admin/analytics/export/orders" class="btn btn-secondary btn-sm" id="btn-export-orders" style="display:flex; align-items:center; justify-content:center; gap:6px; font-weight:700; padding:11px; text-decoration:none;" download>
+        📥 Buyurtmalar (Excel)
+      </a>
+      <a href="/api/admin/analytics/export/products" class="btn btn-secondary btn-sm" id="btn-export-products" style="display:flex; align-items:center; justify-content:center; gap:6px; font-weight:700; padding:11px; text-decoration:none;" download>
+        📥 Ombor hisoboti (Excel)
+      </a>
+    </div>
+
+    <!-- KPI Metric Cards Grid -->
+    <div class="analytics-kpi-grid" id="analytics-kpi-container">
+      <div class="kpi-card">
+        <div class="kpi-label">Bugungi tushum</div>
+        <div class="kpi-value" id="kpi-today-rev">0 so'm</div>
+        <div class="kpi-sub" id="kpi-today-orders">0 ta buyurtma</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Jami savdo tushumi</div>
+        <div class="kpi-value" id="kpi-total-rev">0 so'm</div>
+        <div class="kpi-sub" id="kpi-total-orders">0 ta buyurtma</div>
+      </div>
+      <div class="kpi-card highlight-warning">
+        <div class="kpi-label">Kutilayotgan buyurtmalar</div>
+        <div class="kpi-value" id="kpi-pending-orders">0</div>
+        <div class="kpi-sub">Tasdiqlash kerak</div>
+      </div>
+      <div class="kpi-card highlight-success">
+        <div class="kpi-label">Yetkazilgan buyurtmalar</div>
+        <div class="kpi-value" id="kpi-completed-orders">0</div>
+        <div class="kpi-sub">Yakunlangan</div>
+      </div>
+    </div>
+
+    <!-- Low Stock Alert Banner -->
+    <div class="admin-card" id="low-stock-box" style="margin-top:14px; display:none; border-left: 4px solid var(--danger-color);">
+      <div class="admin-card-title" style="color:var(--danger-color); display:flex; align-items:center; gap:6px;">
+        ⚠️ <span>Kam qolgan mahsulotlar (Ombor signali):</span>
+      </div>
+      <div id="low-stock-list" style="margin-top:8px;"></div>
+    </div>
+
+    <!-- 7-Day Sales Trend -->
+    <div class="admin-card" style="margin-top:14px;">
+      <div class="admin-card-title">📅 Oxirgi 7 kunlik savdo dinamikasi</div>
+      <div class="sales-chart-container" id="daily-sales-chart"></div>
+    </div>
+
+    <!-- Top Selling Products -->
+    <div class="admin-card" style="margin-top:14px;">
+      <div class="admin-card-title">🔥 Eng ko'p sotilgan mahsulotlar (Top-5)</div>
+      <div id="top-products-list" style="margin-top:8px;"></div>
+    </div>
+  </section>
+
   <!-- Bottom Nav Tabs -->
   <nav class="admin-nav">
     <button class="nav-tab active" data-tab="orders">
       <span class="nav-tab-icon">📦</span>
       <span>Buyurtmalar</span>
+    </button>
+    <button class="nav-tab" data-tab="analytics">
+      <span class="nav-tab-icon">📊</span>
+      <span>Statistika</span>
     </button>
     <button class="nav-tab" data-tab="products">
       <span class="nav-tab-icon">🏷</span>
@@ -148,9 +214,26 @@
           <input type="text" id="prod-name" class="form-control" placeholder="Masalan: Erkaklar futbolkasi" required />
         </div>
 
-        <div class="form-group">
-          <label class="form-label">Narxi *</label>
-          <input type="number" step="any" id="prod-price" class="form-control" placeholder="Masalan: 120000" required />
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div class="form-group">
+            <label class="form-label">Narxi *</label>
+            <input type="number" step="any" id="prod-price" class="form-control" placeholder="120000" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Eski narxi (Aksiya)</label>
+            <input type="number" step="any" id="prod-old-price" class="form-control" placeholder="150000" />
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div class="form-group">
+            <label class="form-label">Ombordagi qoldiq *</label>
+            <input type="number" id="prod-stock" class="form-control" value="100" min="0" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">O'lchov birligi</label>
+            <input type="text" id="prod-unit" class="form-control" value="dona" placeholder="dona, kg, metr..." />
+          </div>
         </div>
 
         <div class="form-group">

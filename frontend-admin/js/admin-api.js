@@ -146,4 +146,9 @@ export const adminApi = {
       method: "DELETE",
     });
   },
+
+  // Analytics & Dashboard
+  async getDashboardAnalytics() {
+    return await request(`${API_BASE}/api/admin/analytics/dashboard`);
+  },
 };

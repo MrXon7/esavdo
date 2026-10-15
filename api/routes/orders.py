@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 
 from core.database import get_db
+from core.cache import invalidate_catalog_cache
 from api.deps import get_current_user
 from api.utils import get_safe_image_id
 from models.user import User
@@ -78,13 +79,19 @@ async def create_order(
             detail="Savatingiz bo'sh. Buyurtma berish uchun mahsulot tanlang.",
         )
 
-    # 2. Calculate total and check product availability
+    # 2. Calculate total and check product availability and stock
     total_price = 0.0
     for item in cart_items:
         if not item.product or not item.product.is_active:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Savatdagi ayrim mahsulotlar mavjud emas yoki faol emas.",
+            )
+        unit_str = getattr(item.product, "unit", "dona")
+        if item.quantity > item.product.stock_quantity:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"'{item.product.name}' mahsulotidan omborda faqat {item.product.stock_quantity} {unit_str} qolgan. Iltimos, miqdorni kamaytiring.",
             )
         total_price += float(item.product.price) * item.quantity
 
@@ -105,9 +112,11 @@ async def create_order(
     db.add(new_order)
     await db.flush()  # to obtain new_order.id
 
-    # 4. Create OrderItems and clear cart
+    # 4. Create OrderItems, deduct stock, and clear cart
     created_items = []
     for item in cart_items:
+        # Deduct stock quantity
+        item.product.stock_quantity = max(0, item.product.stock_quantity - item.quantity)
         oi = OrderItem(
             order_id=new_order.id,
             product_id=item.product_id,
@@ -138,6 +147,7 @@ async def create_order(
 
     await db.commit()
     await db.refresh(new_order)
+    invalidate_catalog_cache()
 
     # 5. Send notification to admin group
     try:

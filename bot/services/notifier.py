@@ -164,13 +164,24 @@ async def announce_product_to_group(product_id: int, db: Optional[AsyncSession] 
     except Exception:
         pass
 
+    # Price and discount formatting
+    if product.old_price and float(product.old_price) > float(product.price):
+        discount_pct = round((1 - float(product.price) / float(product.old_price)) * 100)
+        price_text = f"<s>{float(product.old_price):,.0f}</s> <b>{float(product.price):,.0f} {currency}</b> <i>(-{discount_pct}% chegirma!)</i>"
+    else:
+        price_text = f"<b>{float(product.price):,.0f} {currency}</b>"
+
+    stock_qty = getattr(product, "stock_quantity", 100)
+    stock_info = f"\n📦 <b>Mavjud:</b> {stock_qty} {product.unit or 'dona'}" if stock_qty > 0 else "\n⚠️ <b>Holati:</b> Omborda tugagan"
+
     # No duplicate link inside caption! Caption is clean, engaging and beautifully formatted.
     desc_section = f"\n\n📝 <b>Batafsil ma'lumot:</b>\n{desc}" if desc else ""
     caption = (
         f"✨ <b>YANGI MAHSULOT SOTUVDA!</b>\n"
         f"🏬 <b>{store_name}</b>\n\n"
         f"🏷 <b>{product.name}</b>\n"
-        f"💰 <b>Narxi:</b> <b>{float(product.price):,.0f} {currency}</b>"
+        f"💰 <b>Narxi:</b> {price_text}"
+        f"{stock_info}"
         f"{desc_section}\n\n"
         f"<i>Xarid qilish uchun quyidagi tugmani bosing 👇</i>"
     )

@@ -27,6 +27,9 @@ class Product(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     price: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    old_price: Mapped[Optional[float]] = mapped_column(Numeric(14, 2), nullable=True)
+    stock_quantity: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+    unit: Mapped[str] = mapped_column(String(50), default="dona", nullable=False)
     category_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("categories.id", ondelete="SET NULL"), nullable=True
     )

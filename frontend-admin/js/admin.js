@@ -65,6 +65,7 @@ function switchTab(tabName) {
   });
 
   if (tabName === "orders") loadOrders();
+  else if (tabName === "analytics") loadAnalytics();
   else if (tabName === "products") loadProducts();
   else if (tabName === "images") loadImagesGallery();
   else if (tabName === "categories") loadCategories();
@@ -346,13 +347,34 @@ function renderProductsFromData(products) {
     const firstImg = p.images && p.images.length > 0 ? p.images[0].file_id : null;
     const imgUrl = getImageUrl(firstImg);
 
+    let stockBadge = "";
+    const qty = p.stock_quantity ?? 100;
+    const u = p.unit || "dona";
+    if (qty <= 0) {
+      stockBadge = `<span class="stock-badge stock-out">Tugagan</span>`;
+    } else if (qty <= 5) {
+      stockBadge = `<span class="stock-badge stock-low">Kam qoldi (${qty} ${u})</span>`;
+    } else {
+      stockBadge = `<span class="stock-badge stock-in">${qty} ${u}</span>`;
+    }
+
+    let priceHtml = `<div class="admin-prod-price">${formatPrice(p.price)}`;
+    if (p.old_price && p.old_price > p.price) {
+      const discountPct = Math.round((1 - p.price / p.old_price) * 100);
+      priceHtml += ` <span class="old-price-text">${formatPrice(p.old_price)}</span><span class="discount-tag">-${discountPct}%</span>`;
+    }
+    priceHtml += `</div>`;
+
     card.innerHTML = `
       <img src="${imgUrl || 'data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'60\' height=\'60\'><rect width=\'60\' height=\'60\' fill=\'%23eee\'/></svg>'}" class="admin-prod-img" alt="${p.name}">
       <div class="admin-prod-info">
         <div class="admin-prod-name">${p.name}</div>
-        <div class="admin-prod-price">${formatPrice(p.price)}</div>
-        <div style="font-size:11.5px; font-weight:700; color:${p.is_active ? 'var(--success-color)' : 'var(--danger-color)'};">
-          ${p.is_active ? '● Faol' : '● Nofaol'}
+        ${priceHtml}
+        <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
+          <span style="font-size:11.5px; font-weight:700; color:${p.is_active ? 'var(--success-color)' : 'var(--danger-color)'};">
+            ${p.is_active ? '● Faol' : '● Nofaol'}
+          </span>
+          ${stockBadge}
         </div>
       </div>
       <div style="display:flex; gap:6px; flex-shrink:0;">
@@ -527,6 +549,9 @@ window.openEditProduct = async (productId) => {
 
     document.getElementById("prod-name").value = p.name;
     document.getElementById("prod-price").value = p.price;
+    document.getElementById("prod-old-price").value = p.old_price || "";
+    document.getElementById("prod-stock").value = p.stock_quantity ?? 100;
+    document.getElementById("prod-unit").value = p.unit || "dona";
     document.getElementById("prod-desc").value = p.description || "";
     document.getElementById("prod-active").checked = p.is_active;
 
@@ -548,6 +573,11 @@ elProductForm.onsubmit = async (e) => {
   e.preventDefault();
   const name = document.getElementById("prod-name").value.trim();
   const price = parseFloat(document.getElementById("prod-price").value);
+  const oldPriceVal = document.getElementById("prod-old-price").value;
+  const old_price = oldPriceVal ? parseFloat(oldPriceVal) : null;
+  const stockVal = document.getElementById("prod-stock").value;
+  const stock_quantity = stockVal !== "" ? parseInt(stockVal) : 100;
+  const unit = document.getElementById("prod-unit").value.trim() || "dona";
   const description = document.getElementById("prod-desc").value.trim();
   const categoryIdVal = elCategorySelect.value;
   const category_id = categoryIdVal ? parseInt(categoryIdVal) : null;
@@ -564,6 +594,9 @@ elProductForm.onsubmit = async (e) => {
       await adminApi.updateProduct(editingProductId, {
         name,
         price,
+        old_price,
+        stock_quantity,
+        unit,
         description: description || null,
         category_id,
         is_active,
@@ -573,6 +606,9 @@ elProductForm.onsubmit = async (e) => {
       await adminApi.createProduct({
         name,
         price,
+        old_price,
+        stock_quantity,
+        unit,
         description: description || null,
         category_id,
         is_active,
@@ -865,6 +901,7 @@ bootAdmin();
 setInterval(() => {
   if (document.hidden) return;
   if (currentTab === "orders") loadOrders(true, true);
+  else if (currentTab === "analytics") loadAnalytics(true);
   else if (currentTab === "products") loadProducts(true, true);
   else if (currentTab === "images") loadImagesGallery();
 }, 10000);
@@ -872,6 +909,155 @@ setInterval(() => {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
     if (currentTab === "orders") loadOrders(true, true);
+    else if (currentTab === "analytics") loadAnalytics(true);
     else if (currentTab === "products") loadProducts(true, true);
   }
 });
+
+// ─── Analytics & Excel Export ────────────────────────────────────────────────
+let _analyticsCache = null;
+
+async function loadAnalytics(forceRefresh = false) {
+  try {
+    const data = await adminApi.getDashboardAnalytics();
+    _analyticsCache = data;
+    renderAnalytics(data);
+  } catch (err) {
+    console.error("Analytics load error:", err);
+  }
+}
+
+function renderAnalytics(data) {
+  if (!data) return;
+
+  const elTodayRev = document.getElementById("kpi-today-rev");
+  if (elTodayRev) elTodayRev.textContent = formatPrice(data.today_revenue || 0);
+
+  const elTodayOrders = document.getElementById("kpi-today-orders");
+  if (elTodayOrders) elTodayOrders.textContent = `${data.today_orders || 0} ta buyurtma`;
+
+  const elTotalRev = document.getElementById("kpi-total-rev");
+  if (elTotalRev) elTotalRev.textContent = formatPrice(data.total_revenue || 0);
+
+  const elTotalOrders = document.getElementById("kpi-total-orders");
+  if (elTotalOrders) elTotalOrders.textContent = `${data.total_orders || 0} ta buyurtma`;
+
+  const elPendingOrders = document.getElementById("kpi-pending-orders");
+  if (elPendingOrders) elPendingOrders.textContent = data.pending_orders || 0;
+
+  const elCompletedOrders = document.getElementById("kpi-completed-orders");
+  if (elCompletedOrders) elCompletedOrders.textContent = data.completed_orders || 0;
+
+  // Low stock box
+  const lowStockBox = document.getElementById("low-stock-box");
+  const lowStockList = document.getElementById("low-stock-list");
+  if (lowStockBox && lowStockList) {
+    if (data.low_stock_products && data.low_stock_products.length > 0) {
+      lowStockBox.style.display = "block";
+      lowStockList.innerHTML = data.low_stock_products
+        .map(
+          (p) => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-bottom:1px solid var(--border-subtle); font-size:13px;">
+          <div>
+            <span style="font-weight:700;">${p.name}</span>
+            <div style="font-size:11px; color:var(--text-secondary);">${formatPrice(p.price)}</div>
+          </div>
+          <span class="stock-badge ${p.stock_quantity <= 0 ? 'stock-out' : 'stock-low'}">
+            ${p.stock_quantity <= 0 ? 'Qolmagan' : `${p.stock_quantity} ${p.unit || 'dona'}`}
+          </span>
+        </div>
+      `
+        )
+        .join("");
+    } else {
+      lowStockBox.style.display = "none";
+    }
+  }
+
+  // 7-day sales chart
+  const chartEl = document.getElementById("daily-sales-chart");
+  if (chartEl && data.daily_sales) {
+    const maxRev = Math.max(...data.daily_sales.map((d) => d.revenue), 1);
+    chartEl.innerHTML = data.daily_sales
+      .map((d) => {
+        const heightPct = Math.max(8, Math.round((d.revenue / maxRev) * 100));
+        return `
+        <div class="chart-bar-col">
+          <div class="chart-bar-val">${d.orders_count > 0 ? d.orders_count : ''}</div>
+          <div class="chart-bar-fill" style="height:${heightPct}%;" title="${d.date}: ${formatPrice(d.revenue)} (${d.orders_count} ta)"></div>
+          <div class="chart-bar-label">${d.day_name}</div>
+        </div>
+      `;
+      })
+      .join("");
+  }
+
+  // Top products list
+  const topListEl = document.getElementById("top-products-list");
+  if (topListEl && data.top_selling_products) {
+    if (data.top_selling_products.length === 0) {
+      topListEl.innerHTML = `<div style="color:var(--text-secondary); font-size:13px; padding:10px 0; text-align:center;">Hozircha sotuvlar ma'lumoti yo'q</div>`;
+    } else {
+      topListEl.innerHTML = data.top_selling_products
+        .map(
+          (p, idx) => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px solid var(--border-subtle); font-size:13px;">
+          <div>
+            <span style="font-weight:800; color:var(--button-color); margin-right:6px;">#${idx + 1}</span>
+            <span style="font-weight:700;">${p.product_name}</span>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-weight:800; color:var(--text-primary);">${p.total_sold} dona</div>
+            <div style="font-size:11px; color:var(--text-secondary);">${formatPrice(p.total_revenue)}</div>
+          </div>
+        </div>
+      `
+        )
+        .join("");
+    }
+  }
+}
+
+const btnRefreshAnalytics = document.getElementById("btn-refresh-analytics");
+if (btnRefreshAnalytics) {
+  btnRefreshAnalytics.onclick = () => loadAnalytics(true);
+}
+
+// Download Excel CSV reports with Telegram authentication
+async function downloadReport(url, filename) {
+  try {
+    const headers = {};
+    if (tg && tg.initData) {
+      headers["X-Telegram-Init-Data"] = tg.initData;
+    }
+    const resp = await fetch(url, { headers });
+    if (!resp.ok) throw new Error("Hisobotni yuklab bo'lmadi");
+    const blob = await resp.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(downloadUrl);
+  } catch (err) {
+    alert("Hisobotni yuklab bo'lmadi: " + err.message);
+  }
+}
+
+const btnExportOrders = document.getElementById("btn-export-orders");
+if (btnExportOrders) {
+  btnExportOrders.onclick = (e) => {
+    e.preventDefault();
+    downloadReport("/api/admin/analytics/export/orders", `buyurtmalar_${new Date().toISOString().slice(0, 10)}.csv`);
+  };
+}
+
+const btnExportProducts = document.getElementById("btn-export-products");
+if (btnExportProducts) {
+  btnExportProducts.onclick = (e) => {
+    e.preventDefault();
+    downloadReport("/api/admin/analytics/export/products", `ombor_hisoboti_${new Date().toISOString().slice(0, 10)}.csv`);
+  };
+}

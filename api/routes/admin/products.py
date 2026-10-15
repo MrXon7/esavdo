@@ -31,6 +31,9 @@ class AdminProductResponse(BaseModel):
     name: str
     description: Optional[str] = None
     price: float
+    old_price: Optional[float] = None
+    stock_quantity: int = 100
+    unit: str = "dona"
     category_id: Optional[int] = None
     is_active: bool
     images: List[AdminProductImageSchema] = []
@@ -42,6 +45,9 @@ class CreateProductRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     price: float = Field(..., ge=0)
+    old_price: Optional[float] = Field(None, ge=0)
+    stock_quantity: int = Field(default=100, ge=0)
+    unit: str = Field(default="dona", max_length=50)
     category_id: Optional[int] = None
     is_active: bool = True
     image_file_ids: List[str] = []
@@ -51,6 +57,9 @@ class UpdateProductRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     price: Optional[float] = Field(None, ge=0)
+    old_price: Optional[float] = Field(None, ge=0)
+    stock_quantity: Optional[int] = Field(None, ge=0)
+    unit: Optional[str] = Field(None, max_length=50)
     category_id: Optional[int] = None
     is_active: Optional[bool] = None
     image_file_ids: Optional[List[str]] = None
@@ -81,6 +90,9 @@ async def create_product_admin(
         name=req.name.strip(),
         description=req.description.strip() if req.description else None,
         price=req.price,
+        old_price=req.old_price,
+        stock_quantity=req.stock_quantity,
+        unit=req.unit.strip() if req.unit else "dona",
         category_id=req.category_id,
         is_active=req.is_active,
     )
@@ -161,6 +173,12 @@ async def update_product_admin(
         product.description = req.description.strip() if req.description else None
     if req.price is not None:
         product.price = req.price
+    if req.old_price is not None:
+        product.old_price = req.old_price if req.old_price > 0 else None
+    if req.stock_quantity is not None:
+        product.stock_quantity = req.stock_quantity
+    if req.unit is not None:
+        product.unit = req.unit.strip() if req.unit else "dona"
     if req.category_id is not None:
         product.category_id = req.category_id
     if req.is_active is not None:

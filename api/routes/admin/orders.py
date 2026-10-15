@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from core.config import settings
 from core.database import get_db
+from core.cache import invalidate_catalog_cache
 from api.deps import get_current_admin
 from api.utils import get_safe_image_id
 from models.admin import Admin
@@ -154,6 +155,20 @@ async def update_order_status_admin(
     order = result.scalar_one_or_none()
     if not order:
         raise HTTPException(status_code=404, detail="Buyurtma topilmadi")
+
+    old_status = order.status
+    if old_status != new_status:
+        # If cancelled, restore stock back to products
+        if new_status == OrderStatus.CANCELLED.value and old_status != OrderStatus.CANCELLED.value:
+            for item in order.items:
+                if item.product:
+                    item.product.stock_quantity += item.quantity
+        # If uncancelled, deduct stock again
+        elif old_status == OrderStatus.CANCELLED.value and new_status != OrderStatus.CANCELLED.value:
+            for item in order.items:
+                if item.product:
+                    item.product.stock_quantity = max(0, item.product.stock_quantity - item.quantity)
+        invalidate_catalog_cache()
 
     order.status = new_status
     await db.commit()
