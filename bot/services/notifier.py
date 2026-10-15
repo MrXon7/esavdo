@@ -31,10 +31,11 @@ STATUS_MESSAGES = {
 }
 
 
-async def notify_admin_new_order(order_id: int, db: AsyncSession):
-    """Sends new order notification to the admin group with inline action buttons."""
-    if not settings.ADMIN_GROUP_ID:
-        logger.warning("ADMIN_GROUP_ID sozlanmagan, buyurtma haqida xabar yuborilmadi.")
+async def notify_admin_new_order(order_id: int, db: AsyncSession, receipt_bytes: Optional[bytes] = None):
+    """Sends new order notification to the admin group with inline action buttons and receipt photo if present."""
+    target_chat_id = settings.ADMIN_GROUP_ID or settings.ADMIN_TELEGRAM_ID
+    if not target_chat_id:
+        logger.warning("ADMIN_GROUP_ID yoki ADMIN_TELEGRAM_ID sozlanmagan, buyurtma haqida xabar yuborilmadi.")
         return
 
     result = await db.execute(
@@ -59,7 +60,10 @@ async def notify_admin_new_order(order_id: int, db: AsyncSession):
         items_text += f"{idx}. {prod_name} — {item.quantity} x {float(item.price_at_order_time):,.0f} = {item_total:,.0f} {currency}\n"
 
     customer_name = order.user.full_name if order.user else "Noma'lum"
-    payment_method = "Naqd pul" if order.payment_type == "cash" else "Karta orqali"
+    if order.payment_type == "card":
+        payment_method = "Karta orqali" + (" (🧾 Chek ilova qilindi)" if receipt_bytes else " (Cheksiz)")
+    else:
+        payment_method = "Naqd pul"
 
     notes_text = order.notes if order.notes else "Yo'q"
     msg_text = (
@@ -88,11 +92,33 @@ async def notify_admin_new_order(order_id: int, db: AsyncSession):
     )
 
     try:
-        await bot.send_message(
-            chat_id=settings.ADMIN_GROUP_ID,
-            text=msg_text,
-            reply_markup=keyboard,
-        )
+        if receipt_bytes:
+            from aiogram.types import BufferedInputFile
+            photo_file = BufferedInputFile(receipt_bytes, filename=f"chek_buyurtma_{order.id}.jpg")
+            if len(msg_text) <= 1024:
+                await bot.send_photo(
+                    chat_id=target_chat_id,
+                    photo=photo_file,
+                    caption=msg_text,
+                    reply_markup=keyboard,
+                )
+            else:
+                await bot.send_photo(
+                    chat_id=target_chat_id,
+                    photo=photo_file,
+                    caption=f"🧾 <b>Buyurtma #{order.id} to'lov cheki</b>\n💳 To'lov: Karta orqali",
+                )
+                await bot.send_message(
+                    chat_id=target_chat_id,
+                    text=msg_text,
+                    reply_markup=keyboard,
+                )
+        else:
+            await bot.send_message(
+                chat_id=target_chat_id,
+                text=msg_text,
+                reply_markup=keyboard,
+            )
     except Exception as e:
         logger.error(f"Adminga yangi buyurtma xabarini yuborishda xatolik: {e}")
 

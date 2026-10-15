@@ -27,6 +27,7 @@ class CreateOrderRequest(BaseModel):
     phone: str = Field(..., min_length=7)
     payment_type: str = Field(default="cash")
     notes: Optional[str] = None
+    receipt_image: Optional[str] = None
 
 
 class OrderItemDetailSchema(BaseModel):
@@ -149,11 +150,23 @@ async def create_order(
     await db.refresh(new_order)
     invalidate_catalog_cache()
 
-    # 5. Send notification to admin group
+    # 5. Extract optional payment receipt image (in-memory only, never stored in DB)
+    receipt_bytes = None
+    if req.payment_type == "card" and req.receipt_image:
+        try:
+            import base64
+            b64_str = req.receipt_image
+            if "," in b64_str:
+                b64_str = b64_str.split(",", 1)[1]
+            receipt_bytes = base64.b64decode(b64_str)
+        except Exception as e:
+            logger.warning(f"To'lov cheki rasmini dekod qilishda xatolik: {e}")
+
+    # 6. Send notification to admin group (with receipt photo if available)
     try:
-        await notify_admin_new_order(new_order.id, db)
-    except Exception:
-        pass
+        await notify_admin_new_order(new_order.id, db, receipt_bytes=receipt_bytes)
+    except Exception as e:
+        logger.error(f"Adminga buyurtma bildirishnomasini yuborishda xatolik: {e}")
 
     return {
         "id": new_order.id,

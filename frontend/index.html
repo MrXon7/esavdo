@@ -73,8 +73,27 @@
           <label class="form-label">To'lov usuli</label>
           <select id="input-payment-type" class="form-select">
             <option value="cash">Naqd pul orqali (kuryerga)</option>
-            <option value="card">Karta orqali (o'tkazma / terminal)</option>
+            <option value="card">Karta orqali (o'tkazma)</option>
           </select>
+        </div>
+
+        <div class="form-group" id="group-receipt-upload" style="display: none;">
+          <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>To'lov cheki (skrinshot / rasm) <span style="color: #ef4444;">*</span></span>
+          </label>
+          <div class="receipt-drop-zone" id="receipt-drop-zone" style="border: 2px dashed #94a3b8; border-radius: 10px; padding: 14px; text-align: center; cursor: pointer; background: var(--card-bg, #f8fafc); transition: all 0.2s;">
+            <input type="file" id="input-receipt-file" accept="image/*" style="display: none;" />
+            <div id="receipt-placeholder">
+              <div style="font-size: 32px; margin-bottom: 4px;">🧾</div>
+              <div style="font-weight: 600; font-size: 14px; color: var(--text-primary);">Chek rasmini yuklash</div>
+              <div style="font-size: 12px; color: var(--text-secondary, #64748b); margin-top: 2px;">Rasmni tanlash yoki skrinshotni yuklash uchun shu yerni bosing</div>
+            </div>
+            <div id="receipt-preview-wrap" style="display: none;">
+              <img id="receipt-preview-img" src="" alt="To'lov cheki" style="max-height: 200px; max-width: 100%; border-radius: 8px; object-fit: contain; box-shadow: 0 2px 8px rgba(0,0,0,0.12);" />
+              <button type="button" id="btn-remove-receipt" style="display: inline-block; margin-top: 8px; font-size: 12px; color: #ef4444; background: #fee2e2; border: 1px solid #fca5a5; border-radius: 6px; padding: 4px 12px; cursor: pointer; font-weight: 600;">🗑 Chekni o'chirish</button>
+            </div>
+          </div>
+          <small style="color: var(--text-secondary, #64748b); font-size: 11px; display: block; margin-top: 4px;">Karta orqali to'lov qilinganligini tasdiqlovchi chek (skrinshot)ni yuklang</small>
         </div>
 
         <div class="form-group">

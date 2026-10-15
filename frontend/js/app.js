@@ -670,17 +670,125 @@ document.getElementById("btn-go-to-checkout").onclick = () => {
   switchView("checkout");
 };
 
-// ─── 7. Checkout Form Submission with Smooth Spinner ────────────────────────
+// ─── 7. Checkout Form & Payment Receipt Logic ──────────────────────────────
 const checkoutForm = document.getElementById("checkout-form");
+const paymentTypeSelect = document.getElementById("input-payment-type");
+const groupReceiptUpload = document.getElementById("group-receipt-upload");
+const receiptDropZone = document.getElementById("receipt-drop-zone");
+const inputReceiptFile = document.getElementById("input-receipt-file");
+const receiptPlaceholder = document.getElementById("receipt-placeholder");
+const receiptPreviewWrap = document.getElementById("receipt-preview-wrap");
+const receiptPreviewImg = document.getElementById("receipt-preview-img");
+const btnRemoveReceipt = document.getElementById("btn-remove-receipt");
+
+let currentReceiptBase64 = null;
+
+function resetReceiptUI() {
+  currentReceiptBase64 = null;
+  inputReceiptFile.value = "";
+  receiptPreviewImg.src = "";
+  receiptPreviewWrap.style.display = "none";
+  receiptPlaceholder.style.display = "block";
+}
+
+// Toggle receipt upload block when payment type changes
+paymentTypeSelect.onchange = () => {
+  if (paymentTypeSelect.value === "card") {
+    groupReceiptUpload.style.display = "block";
+  } else {
+    groupReceiptUpload.style.display = "none";
+    resetReceiptUI();
+  }
+};
+
+// Trigger hidden file input on drop zone click
+receiptDropZone.onclick = (e) => {
+  if (e.target === btnRemoveReceipt || btnRemoveReceipt.contains(e.target)) {
+    return;
+  }
+  inputReceiptFile.click();
+};
+
+btnRemoveReceipt.onclick = (e) => {
+  e.stopPropagation();
+  resetReceiptUI();
+};
+
+// Fast client-side image compression for receipt (keeps file < 250KB for instant upload)
+function compressReceiptImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxWidth = 1200;
+        const maxHeight = 1200;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth || height > maxHeight) {
+          if (width > height) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      };
+      img.onerror = () => reject(new Error("Rasmni o'qib bo'lmadi"));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error("Faylni o'qishda xatolik"));
+    reader.readAsDataURL(file);
+  });
+}
+
+inputReceiptFile.onchange = async () => {
+  const file = inputReceiptFile.files?.[0];
+  if (!file) return;
+
+  try {
+    receiptPlaceholder.innerHTML = `<span class="spinner" style="border-color: #3b82f6; border-top-color: transparent;"></span> Rasm tayyorlanmoqda...`;
+    currentReceiptBase64 = await compressReceiptImage(file);
+    receiptPreviewImg.src = currentReceiptBase64;
+    receiptPlaceholder.style.display = "none";
+    receiptPreviewWrap.style.display = "block";
+  } catch (err) {
+    alert("Chek rasmini yuklashda xatolik: " + err.message);
+    resetReceiptUI();
+  } finally {
+    receiptPlaceholder.innerHTML = `
+      <div style="font-size: 32px; margin-bottom: 4px;">🧾</div>
+      <div style="font-weight: 600; font-size: 14px; color: var(--text-primary);">Chek rasmini yuklash</div>
+      <div style="font-size: 12px; color: var(--text-secondary, #64748b); margin-top: 2px;">Rasmni tanlash yoki skrinshotni yuklash uchun shu yerni bosing</div>
+    `;
+  }
+};
+
+// Checkout Form Submission
 checkoutForm.onsubmit = async (e) => {
   e.preventDefault();
   const address = document.getElementById("input-address").value.trim();
   const phone = document.getElementById("input-phone").value.trim();
-  const paymentType = document.getElementById("input-payment-type").value;
+  const paymentType = paymentTypeSelect.value;
   const notes = document.getElementById("input-notes").value.trim();
 
   if (!address || !phone) {
     alert("Iltimos, yetkazib berish manzili va telefon raqamingizni kiriting!");
+    return;
+  }
+
+  // Validate receipt if payment method is card
+  if (paymentType === "card" && !currentReceiptBase64) {
+    alert("Karta orqali to'lov tanlandi. Iltimos, to'lov cheki (skrinshot)ni yuklang!");
     return;
   }
 
@@ -694,13 +802,15 @@ checkoutForm.onsubmit = async (e) => {
       phone,
       payment_type: paymentType,
       notes: notes || null,
+      receipt_image: paymentType === "card" ? currentReceiptBase64 : null,
     });
 
     await cart.load();
-    // Invalidate orders cache so the new order appears immediately
     _ordersCache = null;
     alert("🎉 Buyurtmangiz muvaffaqiyatli qabul qilindi!");
     checkoutForm.reset();
+    resetReceiptUI();
+    groupReceiptUpload.style.display = "none";
     switchView("orders");
   } catch (err) {
     alert("Xatolik yuz berdi: " + err.message);
